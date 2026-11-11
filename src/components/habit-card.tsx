@@ -1,6 +1,6 @@
 "use client";
 
-import { CigaretteOff, Dumbbell, Flame, Moon, Sparkles, Check, X } from "lucide-react";
+import { CigaretteOff, Dumbbell, Flame, Moon, Sparkles, Check, WineOff, X } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Card } from "@/components/ui";
@@ -9,7 +9,7 @@ import { api, cn } from "@/lib/utils";
 type HabitView = { _id: string; name: string; emoji: string; good: string; bad: string; today: boolean | null; streak: number; best: number; last7: (boolean | null)[]; rate30: number };
 type Board = { habits: HabitView[]; comeback: { day: number; total: number; left: number } };
 
-const ICONS: Record<string, typeof Dumbbell> = { dumbbell: Dumbbell, ban: CigaretteOff, moon: Moon, sparkles: Sparkles };
+const ICONS: Record<string, typeof Dumbbell> = { dumbbell: Dumbbell, ban: CigaretteOff, moon: Moon, sparkles: Sparkles, wine: WineOff };
 
 export function HabitCard({ initial }: { initial: Board }) {
   const [board, setBoard] = useState(initial);

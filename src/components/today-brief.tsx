@@ -1,18 +1,19 @@
 "use client";
 
-import { CalendarRange, Loader2, Moon, RefreshCw, Send, Sun, Wallet } from "lucide-react";
+import { CalendarRange, Heart, Loader2, Moon, RefreshCw, Send, Sun, Wallet } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button, Card, SquiggleTab } from "@/components/ui";
 import { api } from "@/lib/utils";
 
-type Kind = "morning" | "night" | "weekly" | "monthly";
+type Kind = "morning" | "night" | "weekly" | "monthly" | "care";
 type Entry = { kind: Kind; date: string; text: string; whatsapp: string; at: string };
 
 const META: Record<Kind, { label: string; icon: typeof Sun; empty: string }> = {
   morning: { label: "morning brief", icon: Sun, empty: "lands on your whatsapp at 8 AM. or make one now." },
   night: { label: "night wrap-up", icon: Moon, empty: "comes at 10 PM: what got done, what you spent, what to remember." },
   weekly: { label: "week review", icon: CalendarRange, empty: "every sunday at 7 PM. done vs slipped, money, next week." },
+  care: { label: "for komal", icon: Heart, empty: "sundays at 11 AM: one thoughtful thing for her this week, without her asking, plus one small thing to practice." },
   monthly: { label: "money report", icon: Wallet, empty: "on the 1st at 9 AM: last month's money, leaks, recurring, flat goal. as a voice note too." },
 };
 

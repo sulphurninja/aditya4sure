@@ -14,13 +14,15 @@ import { askBrain, forScreen, replyVoice } from "./whatsapp-inbound";
  * Each fires once per day (atomic marker), from the same every-minute tick as reminders.
  */
 
-export type RhythmKind = "morning" | "night" | "weekly" | "monthly";
+export type RhythmKind = "morning" | "night" | "weekly" | "monthly" | "care";
 export type RhythmEntry = { _id: string; ownerId: string; kind: RhythmKind; date: string; text: string; whatsapp: string; at: string };
 
 const PROMPTS: Record<RhythmKind, string> = {
   morning: "/brief",
   night:
     "[night check-in, scheduled] Write my night wrap-up check-in. First line: a one-line vibe check on the day. Then number my todos due today or overdue that are still open (time first if there is one) and ask which ones got done. Then ask if I spent or received any money today, a quick comeback check-in on the habits not logged yet today (gym, smoke-free, sleep, skincare, in one line), and if there's anything I want you to remember or remind me about tomorrow. Short, my style. Tell me I can answer everything in one message.",
+  care:
+    "[sunday care nudge, scheduled] One thoughtful thing I should do for Komal (bubu) THIS week without her asking: base it on what's going on with her right now (exams, health, family, her mood lately), her gift ideas and wishes, and our upcoming dates. Make it specific and doable (what, when, roughly how much). Then one small emotional-intelligence practice for this week from what I'm working on (feeling first, truth first, fewer promises, no drinking), tied to something real coming up. Short, my style, numbered.",
   monthly:
     "[monthly money report, scheduled] Write my money report for LAST month (it just ended): 1) in, spent, saved and what was left, vs the month before, 2) where it went, top categories and the biggest leaks, 3) recurring payments, 4) who owes who, 5) flat goal progress and what this month needs, 6) one honest money move for this month. Numbered, short, my style. Use only what's logged; say if something is missing.",
   weekly:
@@ -34,6 +36,7 @@ function schedule(): Record<RhythmKind, string> {
     night: process.env.RHYTHM_NIGHT || "22:00",
     weekly: process.env.RHYTHM_WEEKLY || "19:00",
     monthly: process.env.RHYTHM_MONTHLY || "09:00",
+    care: process.env.RHYTHM_CARE || "11:00",
   };
 }
 
@@ -84,6 +87,7 @@ export async function runDueRhythms() {
   if (inWindow(s.night)) due.push("night");
   if (now.weekday === "Sunday" && inWindow(s.weekly)) due.push("weekly");
   if (now.date.endsWith("-01") && inWindow(s.monthly)) due.push("monthly");
+  if (now.weekday === "Sunday" && inWindow(s.care)) due.push("care");
 
   const fired: string[] = [];
   const col = await log();

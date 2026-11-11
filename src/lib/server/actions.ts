@@ -18,7 +18,7 @@ const ACTIONABLE =
   /\b(remind|reminder|todo|to-do|to do|meeting|meet|call|appointment|deadline|due|schedule|book|have to|need to|gotta|got to|don'?t let me forget|note (this|that)|add (it|this|that)|tomorrow|tonight|today at|at \d|\d\s?(am|pm)|baje|yaad|kal|parso)\b/i;
 /** "pranav call done", "sent the deck", "ho gaya" -> tick todos off. */
 /** "gym done", "no cigs today", "slept at 2", "skipped skincare" -> habit check-ins. */
-const HABIT = /\b(gym|workout|trained|lift(ed)?|smok\w*|cig\w*|sutta|slept|sleep|skin ?care|skincare|routine)\b/i;
+const HABIT = /\b(gym|workout|trained|lift(ed)?|smok\w*|cig\w*|sutta|slept|sleep|skin ?care|skincare|routine|drink\w*|drank|beers?|alcohol|daaru|daru|sharab|sober|whisky|vodka|shots?)\b/i;
 const DONE = /\b(done|finished|completed|complete|sent|did it|did the|happened|wrapped|closed|ho gaya|ho gya|kar diya|kr diya|cancel+ed|drop it|skip(ped)?)\b/i;
 /** "spent 1.2k on dinner", "got 80k from zaptick", "paid rent" -> money ledger. */
 const MONEY = /(₹|\brs\.?\s?\d|\b\d+(\.\d+)?\s?(k|l|lakh|lakhs|cr)\b|\b(spent|spend|paid|pay(ed)?|received|got paid|credited|debited|lent|borrowed|owe[sd]?|salary|payout|left with)\b)/i;
@@ -32,7 +32,7 @@ const Extract = z.object({
   dropped_task_ids: z.array(z.string()).describe("ids from <open_todos> he says are cancelled/not happening/skip"),
   habits: z
     .array(z.object({ habit_id: z.string(), done: z.boolean(), date: z.string().nullable().describe("YYYY-MM-DD if he means another day ('yesterday'), else null = today") }))
-    .describe("Check-ins for <habits> he reports: 'gym done' = done, 'smoked 2' = no-smoking NOT done, '0 cigs' = done, 'slept 3 hours' = sleep NOT done. Only what he clearly says."),
+    .describe("Check-ins for <habits> he reports: 'gym done' = done, 'smoked 2' = no-smoking NOT done, '0 cigs' = done, 'slept 3 hours' = sleep NOT done, 'had 2 beers' = no-drinking NOT done, 'no drinks today' / 'stayed sober' = done. Only what he clearly says."),
   actions: z.array(
     z.object({
       title: z.string().describe("Short and specific, e.g. 'Call with Pranav (Sidz): automations + templates'"),

@@ -170,6 +170,10 @@ With Komal: ${voice.withKomal}` : voice.guide) : null;
     const voiceLang = englishBrain
       ? " LANGUAGE: he spoke English, so reply in plain natural English only. Not a single Hindi word, no 'yaar', no 'arre', no 'na'. An Indian accent in the voice does not mean Hinglish."
       : ` LANGUAGE: he spoke Hinglish, so reply in casual Hinglish written in Roman letters (never Devanagari).${vPrefs?.gender === "female" ? " Your voice is female, so when you refer to yourself in Hindi use feminine forms (main bata rahi hoon, kar deti hoon, main aa gayi)." : ""}`;
+    // Before sending something heavy to Komal: rewrite it feeling-first (what he's practising).
+    const rewriteNote = /^\s*(rewrite|reword|fix this|soften|how (do|should) i (say|send|tell)|make this better|before i send)/i.test(input.message)
+      ? "\n<rewrite_coach>He wants a message rewritten before he sends it (usually to Komal). He is working on emotional intelligence: feeling first, truth first, fewer promises. Rewrite it so it (1) opens by naming HER feeling or the impact on her, (2) owns his part specifically without over-apologising or self-pity, (3) has no defensive 'but', no jokes, no guilt-tripping, no fishing for reassurance, (4) ends with one concrete thing he'll do (only if he can really keep it) or one open question about what she needs. Keep it in his real texting voice with her (bubu, short lines, light emojis). Give the rewrite first, then one short line on what you changed and why.</rewrite_coach>"
+      : "";
     const waNote =
       input.channel === "whatsapp" && !input.voice
         ? "\n<reply_format>This reply goes to his WhatsApp. Text him like a friend: short, plain text, no headers, no [M#] tags. When you list 2 or more things (meetings, todos, options, steps), use a numbered list, one per line: 1. ... 2. ... 3. ... with a time first when there is one (1. 3 PM, Pranav: automations + templates). One short line before the list is fine. Never merge two items into one or split one into two. *bold* only if something is truly critical.</reply_format>"
@@ -185,7 +189,7 @@ With Komal: ${voice.withKomal}` : voice.guide) : null;
     const history: LlmMessage[] = convo.messages.slice(-16).map((m) => ({ role: m.role, content: m.content }));
     const messages: LlmMessage[] = [
       ...history,
-      { role: "user", content: `${evidenceText}${moneyBlock}${peopleBlock}${habitsBlock}${actionsBlock}${excerptBlock}\n\n<question>\n${question}\n</question>${languageNote}${voiceNote}${waNote}` },
+      { role: "user", content: `${evidenceText}${moneyBlock}${peopleBlock}${habitsBlock}${actionsBlock}${excerptBlock}\n\n<question>\n${question}\n</question>${languageNote}${voiceNote}${waNote}${rewriteNote}` },
     ];
 
     const userMsg: ChatMessage = { id: newId("msg"), role: "user", content: input.message, at: now };
