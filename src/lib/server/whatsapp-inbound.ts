@@ -119,9 +119,39 @@ function mediaUrlOf(m: Record<string, unknown>): string | null {
   return pick(m.mediaUrl) ?? pick(m.media_url) ?? pick(m.url) ?? pick(m.fileUrl) ?? pick(media?.url) ?? pick(media?.link) ?? pick(media?.mediaUrl) ?? pick(m.content);
 }
 
+/**
+ * Zaptick's webhook says "audio file" but carries no link. The conversation messages API has the
+ * stored file (mediaUrl on their S3), so look the message up there; retry briefly while it uploads.
+ */
+async function lookupMediaUrl(m: Record<string, unknown>): Promise<{ url: string; mime: string } | null> {
+  const key = process.env.ZAPTICK_API_KEY;
+  const convId = (m.conversation as { id?: string } | undefined)?.id;
+  if (!key || !convId) return null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const res = await fetch(`https://zaptick.io/api/conversations/${encodeURIComponent(convId)}/messages?limit=20`, { headers: { "X-API-Key": key }, signal: AbortSignal.timeout(15_000) });
+    if (res.ok) {
+      const j = (await res.json()) as { conversation?: { messages?: Record<string, unknown>[] }; messages?: Record<string, unknown>[] };
+      const list = j.conversation?.messages ?? j.messages ?? [];
+      const hit = list.find((x) => x.id === m.id || (m.whatsappMessageId && x.whatsappMessageId === m.whatsappMessageId));
+      if (hit && typeof hit.mediaUrl === "string" && /^https?:\/\//.test(hit.mediaUrl)) return { url: hit.mediaUrl, mime: String(hit.mimeType ?? "") };
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  return null;
+}
+
 async function downloadMedia(m: Record<string, unknown>): Promise<{ bytes: Buffer; type: string } | null> {
-  const url = mediaUrlOf(m);
+  let url = mediaUrlOf(m);
+  let mime = String(m.mimeType ?? m.mime_type ?? "");
+  if (!url) {
+    const found = await lookupMediaUrl(m);
+    if (found) {
+      url = found.url;
+      mime = found.mime || mime;
+    }
+  }
   if (!url) return null;
+  m = { ...m, mimeType: mime };
   const headers: Record<string, string> = {};
   if (/zaptick\.io/.test(url) && process.env.ZAPTICK_API_KEY) headers["X-API-Key"] = process.env.ZAPTICK_API_KEY;
   const res = await fetch(url, { headers, signal: AbortSignal.timeout(30_000) });
@@ -177,7 +207,14 @@ async function readImage(bytes: Buffer, mediaType: LlmImage["mediaType"], captio
 
 async function replyText(text: string) {
   const r = await sendWhatsAppText(text);
-  if (!r.ok) console.error("[wa] reply failed:", r.reason, r.detail);
+  if (!r.ok) {
+    console.error("[wa] reply failed:", r.reason, r.detail);
+    // Keep the reason where it can be checked (wa_debug), not just in server logs.
+    await (await getDb())
+      .collection("wa_debug")
+      .insertOne({ _id: newId("wad") as never, at: nowIso(), note: `reply failed: ${r.reason} ${r.detail}`.slice(0, 300), type: "reply", message: null })
+      .catch(() => {});
+  }
   return r;
 }
 

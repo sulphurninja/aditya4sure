@@ -33,16 +33,22 @@ export function voiceNotesReady() {
 
 export type SendResult = { ok: true; id: string | null } | { ok: false; reason: "off" | "window_closed" | "error"; detail: string };
 
-async function post(path: string, body: unknown): Promise<SendResult> {
+async function post(path: string, body: unknown, attempt = 0): Promise<SendResult> {
   const { key } = whatsappConfig();
   if (!key) return { ok: false, reason: "off", detail: "ZAPTICK_API_KEY not set" };
   try {
+    // Zaptick's send call can take 15-40s when it's busy; aborting early cancels the send, so be patient.
     const res = await fetch(`${API}${path}`, {
       method: "POST",
       headers: { "X-API-Key": key, "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(90_000),
     });
+    // Rate limited or a hiccup on their side: one retry after a short pause.
+    if ((res.status === 429 || res.status >= 500) && attempt === 0) {
+      await new Promise((r) => setTimeout(r, 3000));
+      return post(path, body, 1);
+    }
     const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (res.ok) {
       const id = (j.messageId ?? j.wamid ?? (j.data as Record<string, unknown> | undefined)?.messageId ?? null) as string | null;
