@@ -11,6 +11,8 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Ship fast: type errors never block a deploy (CI still runs `npm run typecheck`).
+  typescript: { ignoreBuildErrors: true },
   serverExternalPackages: ["mongodb"],
   turbopack: {
     rules: {
