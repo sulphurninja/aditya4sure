@@ -1,11 +1,13 @@
 import { BellRing, CalendarDays, PiggyBank, Wallet } from "lucide-react";
 import Link from "next/link";
+import { LearnCard } from "@/components/learn-card";
 import { TaskBoard } from "@/components/task-board";
 import { TodayBrief } from "@/components/today-brief";
 import { Card, PageHeader } from "@/components/ui";
 import { currentBalance, istToday, listGoals, monthSummary } from "@/lib/server/money";
 import { entityMap, memoriesWhere } from "@/lib/server/queries";
 import { recentNotifications } from "@/lib/server/reminders";
+import { pendingReviewCounts } from "@/lib/server/learn";
 import { latestRhythms, type RhythmEntry } from "@/lib/server/rhythm";
 import { listTasks } from "@/lib/server/tasks";
 import { formatWhen } from "@/lib/utils";
@@ -21,7 +23,7 @@ function shift(day: string, n: number) {
 export default async function TodayPage() {
   const today = istToday();
   const hour = Number(new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit" }));
-  const [rhythms, tasks, entities, upcoming, balance, month, goals, pings] = await Promise.all([
+  const [rhythms, tasks, entities, upcoming, balance, month, goals, pings, review] = await Promise.all([
     latestRhythms(12).catch(() => [] as RhythmEntry[]),
     listTasks({ status: "all", limit: 500 }).catch(() => []),
     entityMap().catch(() => ({})),
@@ -30,6 +32,7 @@ export default async function TodayPage() {
     monthSummary().catch(() => null),
     listGoals().catch(() => []),
     recentNotifications(5).catch(() => []),
+    pendingReviewCounts().catch(() => ({ proposals: 0, memories: 0 })),
   ]);
   const names = Object.fromEntries(Object.entries(entities).map(([id, e]) => [id, e.name]));
   const latest: Partial<Record<RhythmEntry["kind"], RhythmEntry>> = {};
@@ -52,6 +55,7 @@ export default async function TodayPage() {
         </div>
 
         <div className="space-y-5">
+          <LearnCard initial={review} />
           <Card className="p-5">
             <p className="mb-2 flex items-center gap-1.5 font-mono text-[11px] text-faint">
               <Wallet className="size-3" /> {"// money"}

@@ -31,7 +31,7 @@ const Extract = z.object({
     z.object({
       title: z.string().describe("Short and specific, e.g. 'Call with Pranav (Sidz): automations + templates'"),
       notes: z.string().nullable(),
-      kind: z.enum(TASK_KINDS).describe("reminder = a meeting/call/event at a time; commitment = he promised someone; followup = chase someone; todo = anything else"),
+      kind: z.enum(TASK_KINDS).describe("reminder = a meeting/call/event at a time; commitment = he promised someone something ('I told Pranav I'll send it by Friday'); followup = chase someone who owes him; todo = anything else"),
       area: z.enum(TASK_AREAS),
       date: z.string().nullable().describe("YYYY-MM-DD in IST. 'today' if he says he has it today or doesn't give a day for a meeting he 'has'"),
       time: z.string().nullable().describe("HH:MM 24h IST if a time was said, else null"),
@@ -131,6 +131,8 @@ Titles: short, specific, keep names and companies (e.g. "Meeting with independen
     const date = a.date && /^\d{4}-\d{2}-\d{2}$/.test(a.date) ? a.date : null;
     const time = a.time && /^\d{2}:\d{2}$/.test(a.time) ? a.time : null;
     let remindAt = date && time ? remindAtFor(date, time, a.remind_before_min ?? 15) : null;
+    // Promises / follow-ups with a day but no time: ping at 10 AM that day.
+    if (!remindAt && date && !time && (a.kind === "commitment" || a.kind === "followup")) remindAt = remindAtFor(date, "10:00", 0);
     // Reminder time already passed but the thing itself hasn't: ping in a minute instead.
     if (remindAt && Date.parse(remindAt) < Date.now()) {
       const eventAt = remindAtFor(date!, time!, 0);

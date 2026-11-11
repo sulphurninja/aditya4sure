@@ -9,7 +9,7 @@ import { describeLlmError, parseJson } from "./llm";
 import { collections, newId, nowIso } from "./db";
 import { allThreadMessages, contextText } from "./threads";
 
-const Extracted = z.object({
+export const Extracted = z.object({
   memories: z.array(
     z.object({
       statement: z.string().describe("One atomic, self-contained fact in third person about the subject, e.g. 'Aditya prefers…'"),
@@ -28,7 +28,7 @@ const Extracted = z.object({
   ),
 });
 
-const RULES = `- Extract only facts worth remembering for months: identity, preferences, decisions and their reasons, goals, plans with dates, project facts, metrics with dates, relationships, commitments, important dates, shared memories, gifts, inside jokes, style preferences, corrections of earlier facts.
+export const RULES = `- Extract only facts worth remembering for months: identity, preferences, decisions and their reasons, goals, plans with dates, project facts, metrics with dates, relationships, commitments, important dates, shared memories, gifts, inside jokes, style preferences, corrections of earlier facts.
 - Skip small talk, logistics that expired, and anything trivial.
 - One atomic fact per item, written in third person, self-contained, with dates when stated. Resolve relative dates ("tomorrow", "last week") against the message date to YYYY-MM-DD.
 - Metrics and prices are 'snapshot' with an event_date. Future intentions are 'plan' or 'goal'.
@@ -55,7 +55,18 @@ async function runExtraction(system: string, content: string) {
   }
 }
 
-async function stageProposals(items: z.infer<typeof Extracted>["memories"], sourceId: string, fallbackSubject: string) {
+/** Share of meaningful words two statements have in common (0..1), relative to the shorter one. */
+function overlap(a: string, b: string) {
+  const words = (s: string) => new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w.length > 3));
+  const A = words(a);
+  const B = words(b);
+  if (!A.size || !B.size) return 0;
+  let hit = 0;
+  for (const w of A) if (B.has(w)) hit++;
+  return hit / Math.min(A.size, B.size);
+}
+
+export async function stageProposals(items: z.infer<typeof Extracted>["memories"], sourceId: string, fallbackSubject: string, opts: { skipDuplicates?: boolean } = {}) {
   const c = await collections();
   let created = 0;
   let skipped = 0;
@@ -78,6 +89,12 @@ async function stageProposals(items: z.infer<typeof Extracted>["memories"], sour
       .toArray()
       .then((rows) => rows.map((r) => ({ id: r._id, statement: r.statement })));
     const score = (dupe as { score?: number } | null)?.score ?? 0;
+    // Nightly sweep: a near-identical memory already exists, so don't bother him with it again.
+    // (Text score alone is too loose: any fact mentioning "Zaptick" scores high. Compare the actual words.)
+    if (opts.skipDuplicates && dupe && overlap(item.statement, (dupe as { statement?: string }).statement ?? "") >= 0.75) {
+      skipped++;
+      continue;
+    }
 
     const proposal: Proposal = {
       _id: newId("prop"),
