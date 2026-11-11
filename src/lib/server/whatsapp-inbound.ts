@@ -192,7 +192,7 @@ const Seen = z.object({
   reply: z
     .string()
     .describe(
-      "If his caption asks something or wants an opinion (outfit, design, menu, product, 'what do you think', 'should I'), ANSWER IT here like his sharp best friend: a real, honest opinion with specifics, not a description of the image. 1 to 4 short lines, his casual style, English unless the caption is Hinglish, no em dashes. Empty string if there's no question.",
+      "If his caption asks something or wants an opinion (outfit, design, menu, product, 'what do you think', 'should I'): neutral NOTES for his brain, not the final answer. Exactly what's in the image (pieces, colours, fit, setting, any text/brand), then honest assessment points (what works, what doesn't, concrete tweaks). Plain notes, no tone. Empty string if there's no question.",
     ),
 });
 
@@ -353,11 +353,23 @@ async function onImage(m: Record<string, unknown>, evt: ZaptickEvent) {
     }
     done.push(`${seen.facts.length} thing${seen.facts.length > 1 ? "s" : ""} to review in the app`);
   }
-  const answer = seen.reply.trim();
+  // Opinions go through the SAME brain as every other message, so they come back in his voice,
+  // with his taste/memories, not as a generic stylist. The vision notes are just what it "sees".
+  let answer = "";
+  if (seen.reply.trim()) {
+    answer = await askBrain(
+      `${caption || "what do you think?"}\n\n[He sent a photo with this. What's in it, plus honest notes from looking at it (use them, don't quote them, give YOUR take in my style): ${seen.reply.trim().slice(0, 1500)}]`,
+      false,
+      true,
+    )
+      .then((r) => r.text.trim())
+      .catch(() => "");
+  }
   const logged = done.length ? `${answer ? "\n\n" : `${seen.summary}\n`}${done.map((d) => `• ${d}`).join("\n")}` : "";
   await replyText(answer ? `${answer}${logged}` : done.length ? logged.trim() : `${seen.summary}. want me to do something with it?`);
   // Keep the exchange in the WhatsApp conversation so follow-ups ("what about the shoes?") have context.
-  await keepInConversation(`[photo] ${caption || seen.summary}`, answer || seen.summary);
+  // (When the brain answered, the chat route already saved the exchange.)
+  if (!answer) await keepInConversation(`[photo] ${caption || seen.summary}`, seen.summary);
 }
 
 /** Entry point, runs after the webhook has already said 200. */

@@ -145,3 +145,19 @@ export async function parseJson<S extends z.ZodType>(args: {
   if (res.stop_reason === "refusal" || !res.parsed_output) throw new LlmError("The model declined.");
   return { data: res.parsed_output as z.infer<S>, model: res.model };
 }
+
+/* ---------- embeddings (semantic recall) ---------- */
+
+export const EMBED_MODEL = process.env.EMBED_MODEL || "text-embedding-3-small";
+export const EMBED_DIMS = 512;
+
+export function embeddingsReady() {
+  return Boolean(process.env.OPENAI_API_KEY);
+}
+
+/** Meaning vectors for search ("that time I was stressed about the hotel"). OpenAI only; null when unavailable. */
+export async function embed(texts: string[]): Promise<number[][] | null> {
+  if (!embeddingsReady() || !texts.length) return null;
+  const res = await openai().embeddings.create({ model: EMBED_MODEL, input: texts.map((t) => t.slice(0, 2000)), dimensions: EMBED_DIMS });
+  return res.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+}

@@ -3,6 +3,7 @@ import type { Filter } from "mongodb";
 import { OWNER_ID, type Memory } from "@/lib/domain";
 import { analyzeQuery, type QueryAnalysis } from "@/lib/retrieval/analyze";
 import { collections } from "./db";
+import { semanticSearch } from "./vectors";
 
 export type Evidence = {
   memory: Memory;
@@ -148,6 +149,22 @@ export async function retrieve(
         .then((rows) => rows.forEach((m) => add(m, 2, "voice profile"))),
     );
   }
+
+  // Meaning, not just keywords: "that time I was stressed about the hotel" finds the hotel scramble.
+  tasks.push(
+    semanticSearch(query, 40)
+      .then(async (hits) => {
+        const good = hits.filter((h) => h.score >= 0.3);
+        if (!good.length) return;
+        strategy.push("meaning");
+        const byId = new Map(good.map((h) => [h.id, h.score]));
+        const rows = await memories.find({ ...base, _id: { $in: [...byId.keys()] } }).toArray();
+        for (const m of rows) add(m, Math.max(0, (byId.get(m._id)! - 0.25) * 14), "meaning");
+      })
+      .catch(() => {
+        /* embeddings unavailable: keyword + entity search still work */
+      }),
+  );
 
   tasks.push(
     memories

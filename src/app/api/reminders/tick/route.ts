@@ -2,6 +2,7 @@ import { safeEqual } from "@/lib/server/crypto";
 import { dispatchDueReminders } from "@/lib/server/reminders";
 import { runDueRhythms } from "@/lib/server/rhythm";
 import { runDueLearning } from "@/lib/server/learn";
+import { syncVectors } from "@/lib/server/vectors";
 
 export const maxDuration = 300;
 
@@ -22,15 +23,17 @@ function authorized(req: Request) {
 async function tick(req: Request) {
   if (!authorized(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
   try {
-    const [reminders, rhythm, learned] = await Promise.all([
+    const [reminders, rhythm, learned, vectors] = await Promise.all([
       dispatchDueReminders(),
       runDueRhythms().catch(() => ({ fired: [] as string[] })),
       runDueLearning().catch((err) => {
         console.error("[learn] sweep failed:", err instanceof Error ? err.message.slice(0, 160) : "unknown");
         return null;
       }),
+      // New / edited memories get their meaning vector within a minute.
+      syncVectors(100).catch(() => ({ embedded: 0, removed: 0 })),
     ]);
-    return Response.json({ ...reminders, rhythm: rhythm.fired, learned });
+    return Response.json({ ...reminders, rhythm: rhythm.fired, learned, vectors });
   } catch (err) {
     console.error("[tick] failed:", err instanceof Error ? err.message.slice(0, 160) : "unknown");
     return Response.json({ error: "tick failed" }, { status: 500 });
