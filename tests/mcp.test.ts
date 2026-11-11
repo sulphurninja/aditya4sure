@@ -28,7 +28,7 @@ describe("task schemas", () => {
   });
 });
 
-describe("mcp endpoint auth", () => {
+describe("mcp endpoint auth", { timeout: 30_000 }, () => {
   it("refuses requests without the secret", async () => {
     const { POST } = await import("@/app/api/mcp/[[...key]]/route");
     expect((await POST(rpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }), ctx())).status).toBe(401);

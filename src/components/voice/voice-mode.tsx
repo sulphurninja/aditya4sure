@@ -1,19 +1,24 @@
 "use client";
 
-import { AudioLines, ChevronDown, History, Infinity as Loop, Loader2, Mic, MicOff, Plus, SlidersHorizontal, Volume2, VolumeX, X } from "lucide-react";
+import { AudioLines, ChevronDown, Ear, EarOff, History, Loader2, Mic, Moon, Plus, SlidersHorizontal, Volume2, VolumeX, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { VoiceOrb, type OrbState } from "./voice-orb";
 import { VoicePicker } from "./voice-picker";
+import { chime, SLEEP, WakeListener, wakeSupported } from "./wake";
 
 type Status = { enabled: boolean; usage: { month: string; ttsChars: number; sttMinutes: number; charCap: number; sttMinuteCap: number }; quota: { used: number; limit: number; resetsAt: string | null } | null };
 type Phase = "idle" | "listening" | "transcribing" | "thinking" | "speaking" | "error";
 
 const MAX_MS = 45_000;
 const SILENCE_MS = 1300;
-const NO_SPEECH_MS = 8000;
+/** Quietly restart an empty recording this often (nothing is sent anywhere when you're silent). */
+const RESTART_MS = 15_000;
+/** Awake with nothing said for this long = back to sleep (standby). */
+const IDLE_SLEEP_MS = 60_000;
+const noop = () => () => {};
 
 function pickMime() {
   if (typeof MediaRecorder === "undefined") return "";
@@ -73,7 +78,11 @@ export function VoiceMode({
   useEffect(() => {
     transcriptEnd.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [history.length, heard, reply]);
-  const [handsFree, setHandsFree] = useState(true);
+  /** awake = in a conversation, listens again after every reply. asleep = waits for the wake phrase. */
+  const [awake, setAwake] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const canWake = useSyncExternalStore(noop, wakeSupported, () => false);
+  const [wakeOn, setWakeOn] = useState(true);
   const [muted, setMuted] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const level = useRef(0);
@@ -90,7 +99,12 @@ export function VoiceMode({
   const abortChat = useRef<AbortController | null>(null);
   const loopRaf = useRef(0);
   const phaseRef = useRef<Phase>("idle");
-  const handsFreeRef = useRef(handsFree);
+  const awakeRef = useRef(false);
+  const wakeOnRef = useRef(true);
+  const lastActive = useRef(0);
+  const sleepAfterTurn = useRef(false);
+  const wakeRef = useRef<WakeListener | null>(null);
+  const sleepRef = useRef<() => void>(() => {});
   const mutedRef = useRef(muted);
   const listenRef = useRef<() => void>(() => {});
 
@@ -98,9 +112,9 @@ export function VoiceMode({
     phaseRef.current = phase;
   }, [phase]);
   useEffect(() => {
-    handsFreeRef.current = handsFree;
     mutedRef.current = muted;
-  }, [handsFree, muted]);
+    wakeOnRef.current = wakeOn;
+  }, [muted, wakeOn]);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -153,8 +167,12 @@ export function VoiceMode({
   const finishTurn = useCallback(() => {
     cancelAnimationFrame(loopRaf.current);
     level.current = 0;
-    if (handsFreeRef.current && phaseRef.current !== "error") {
-      setTimeout(() => listenRef.current(), 250);
+    lastActive.current = Date.now();
+    if (sleepAfterTurn.current) {
+      sleepAfterTurn.current = false;
+      sleepRef.current();
+    } else if (awakeRef.current && phaseRef.current !== "error") {
+      setTimeout(() => listenRef.current(), 200);
     } else setPhase("idle");
   }, []);
 
@@ -345,9 +363,13 @@ export function VoiceMode({
       stopMic();
       const secs = (performance.now() - started) / 1000;
       if (!spokeAt || phaseRef.current !== "listening") {
-        if (phaseRef.current === "listening") setPhase("idle");
+        if (phaseRef.current !== "listening") return;
+        if (awakeRef.current && Date.now() - lastActive.current < IDLE_SLEEP_MS) setTimeout(() => listenRef.current(), 50);
+        else if (awakeRef.current) sleepRef.current();
+        else setPhase("idle");
         return;
       }
+      lastActive.current = Date.now();
       setPhase("transcribing");
       const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
       const form = new FormData();
@@ -359,7 +381,8 @@ export function VoiceMode({
         if (!r.ok) throw new Error(j.error ?? "couldn't hear that");
         const text = (j.text ?? "").trim();
         if (!text || text.length < 2) {
-          setPhase("idle");
+          if (awakeRef.current) setTimeout(() => listenRef.current(), 50);
+          else setPhase("idle");
           return;
         }
         // The previous exchange moves into the scrollback before the new one starts.
@@ -371,6 +394,15 @@ export function VoiceMode({
         });
         setReply("");
         setHeard(text);
+        // "bye" / "that's all" / "go to sleep": say later and drop back to standby.
+        if (SLEEP.test(text)) {
+          sleepAfterTurn.current = true;
+          setReply("later, I'm right here when you need me.");
+          streamDone.current = true;
+          if (mutedRef.current) finishTurn();
+          else say("later, I'm right here when you need me.");
+          return;
+        }
         void ask(text);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "failed");
@@ -389,14 +421,82 @@ export function VoiceMode({
         if (!spokeAt) spokeAt = now;
         quietSince = 0;
       } else if (spokeAt && !quietSince) quietSince = now;
-      const done = (spokeAt && quietSince && now - quietSince > SILENCE_MS) || elapsed > MAX_MS || (!spokeAt && elapsed > NO_SPEECH_MS);
+      const done = (spokeAt && quietSince && now - quietSince > SILENCE_MS) || elapsed > MAX_MS || (!spokeAt && elapsed > RESTART_MS);
       if (done && rec.state === "recording") rec.stop();
     });
-  }, [ask, audio, silence, status.enabled, stopMic, watch]);
+  }, [ask, audio, finishTurn, say, silence, status.enabled, stopMic, watch]);
 
   useEffect(() => {
     listenRef.current = () => void listen();
   }, [listen]);
+
+  /** Start a conversation. `rest` = whatever followed the wake phrase ("...what's on today"). */
+  const wakeUp = useCallback(
+    (rest: string) => {
+      wakeRef.current?.stop();
+      const ctx = audio();
+      chime(ctx, true);
+      awakeRef.current = true;
+      setAwake(true);
+      lastActive.current = Date.now();
+      if (rest.length > 3) {
+        setHistory((h) => {
+          const prev: VoiceTurn[] = [];
+          if (heardRef.current) prev.push({ role: "user", content: heardRef.current });
+          if (replyRef.current) prev.push({ role: "assistant", content: replyRef.current });
+          return [...h, ...prev];
+        });
+        setReply("");
+        setHeard(rest);
+        void ask(rest);
+      } else void listen();
+    },
+    [ask, audio, listen],
+  );
+
+  /** Standby: stop the mic, listen only for the wake phrase (if on). */
+  const goToSleep = useCallback(() => {
+    awakeRef.current = false;
+    setAwake(false);
+    if (recorder.current?.state === "recording") {
+      phaseRef.current = "idle";
+      recorder.current.stop();
+    }
+    stopMic();
+    cancelAnimationFrame(loopRaf.current);
+    level.current = 0;
+    setPhase("idle");
+    if (ctxRef.current) chime(ctxRef.current, false);
+    if (wakeOnRef.current && canWake) {
+      wakeRef.current ??= new WakeListener(
+        (rest) => wakeUp(rest),
+        (reason) => {
+          toast.error(reason);
+          setWakeOn(false);
+        },
+      );
+      wakeRef.current.start();
+    }
+  }, [canWake, stopMic, wakeUp]);
+
+  useEffect(() => {
+    sleepRef.current = goToSleep;
+  }, [goToSleep]);
+
+  // Wake word toggled while asleep and armed: start/stop standby listening.
+  useEffect(() => {
+    if (!armed || awake || !canWake) return;
+    if (wakeOn) {
+      wakeRef.current ??= new WakeListener(
+        (rest) => wakeUp(rest),
+        (reason) => {
+          toast.error(reason);
+          setWakeOn(false);
+        },
+      );
+      wakeRef.current.start();
+    } else wakeRef.current?.stop();
+  }, [armed, awake, canWake, wakeOn, wakeUp]);
 
   function newSession() {
     stopAll();
@@ -411,26 +511,25 @@ export function VoiceMode({
 
   const tapOrb = () => {
     if (!status.enabled) return;
+    // The first tap also unlocks audio playback (browsers require one real tap per page).
+    if (!armed) setArmed(true);
+    if (!awake) {
+      wakeUp("");
+      return;
+    }
     if (phase === "listening") {
       if (recorder.current?.state === "recording") recorder.current.stop();
       return;
     }
     // Tap while it's talking or thinking = interrupt and listen.
+    lastActive.current = Date.now();
     void listen();
   };
 
+  /** Esc / stop: end the conversation, go back to standby. */
   const stopAll = () => {
-    handsFreeRef.current = false;
-    setHandsFree(false);
     silence();
-    if (recorder.current?.state === "recording") {
-      phaseRef.current = "idle";
-      recorder.current.stop();
-    }
-    stopMic();
-    cancelAnimationFrame(loopRaf.current);
-    level.current = 0;
-    setPhase("idle");
+    goToSleep();
   };
 
   useEffect(() => {
@@ -449,6 +548,7 @@ export function VoiceMode({
     () => () => {
       silence();
       stopMic();
+      wakeRef.current?.stop();
       cancelAnimationFrame(loopRaf.current);
       void ctxRef.current?.close();
     },
@@ -456,9 +556,16 @@ export function VoiceMode({
   );
 
   const orbState: OrbState = phase === "transcribing" ? "thinking" : phase === "error" ? "error" : phase;
+  const asleepHint = !armed
+    ? "tap me once to switch me on"
+    : wakeOn && canWake
+      ? `sleeping. say "yo wassup gang" or tap me`
+      : "sleeping. tap me to talk";
   const hint = !status.enabled
     ? "add ELEVENLABS_API_KEY to .env.local to wake me up"
-    : { idle: "tap me or hit space, then just talk", listening: "listening… (tap again when done)", transcribing: "got it…", thinking: "thinking…", speaking: "tap to cut me off", error: "something broke" }[phase];
+    : phase === "idle" && !awake
+      ? asleepHint
+      : { idle: "I'm listening", listening: "listening… just talk", transcribing: "got it…", thinking: "thinking…", speaking: "tap to cut me off", error: "something broke" }[phase];
   const u = status.usage;
 
   return (
@@ -549,13 +656,16 @@ export function VoiceMode({
 
       <div className="flex w-full max-w-3xl flex-col items-center gap-4">
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setHandsFree((v) => !v)}
-            className={cn("inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs transition", handsFree ? "border-accent-line bg-accent-soft text-accent" : "border-line-strong text-muted hover:text-fg")}
-          >
-            <Loop className="size-3.5" /> hands-free {handsFree ? "on" : "off"}
-          </button>
+          {canWake && (
+            <button
+              type="button"
+              onClick={() => setWakeOn((v) => !v)}
+              title='wake phrases: "yo wassup gang", "hey aditya", "hey jarvis"'
+              className={cn("inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs transition", wakeOn ? "border-accent-line bg-accent-soft text-accent" : "border-line-strong text-muted hover:text-fg")}
+            >
+              {wakeOn ? <Ear className="size-3.5" /> : <EarOff className="size-3.5" />} wake word {wakeOn ? "on" : "off"}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setMuted((v) => !v)}
@@ -577,9 +687,9 @@ export function VoiceMode({
               </div>
             )}
           </div>
-          {phase !== "idle" && (
-            <button type="button" onClick={stopAll} className="inline-flex items-center gap-1.5 rounded-full border border-line-strong px-3.5 py-2 text-xs text-muted hover:border-danger/40 hover:text-danger">
-              <MicOff className="size-3.5" /> stop
+          {awake && (
+            <button type="button" onClick={stopAll} className="inline-flex items-center gap-1.5 rounded-full border border-line-strong px-3.5 py-2 text-xs text-muted hover:border-faint hover:text-fg">
+              <Moon className="size-3.5" /> sleep
             </button>
           )}
         </div>
