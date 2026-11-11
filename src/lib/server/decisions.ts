@@ -32,6 +32,8 @@ async function col() {
 }
 
 const istToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+/** When it was decided, in his time (IST) with time of day, so "just now" never reads as "yesterday". */
+export const decidedWhen = (iso: string) => new Date(iso).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 export async function activeDecisions(limit = 30) {
   return (await col()).find({ ownerId: OWNER_ID, status: "active" }).sort({ decidedAt: -1 }).limit(limit).toArray();
@@ -118,6 +120,6 @@ export function todaysPractice(day = istToday()) {
 /** For the brain: active decisions + today's practice, so briefs/wrap-ups coach and replies can catch drift. */
 export async function decisionsContext(): Promise<string> {
   const [active, p] = [await activeDecisions(15), todaysPractice()];
-  const lines = active.map((d) => `[${d._id}] decided ${d.decidedAt.slice(0, 10)}: ${d.statement}${d.followUp ? ` (follow through by ${d.followUp})` : ""}${d.drifts.length ? ` (wobbled ${d.drifts.length}x)` : ""}`);
+  const lines = active.map((d) => `[${d._id}] decided ${decidedWhen(d.decidedAt)} IST: ${d.statement}${d.followUp ? ` (follow through by ${d.followUp})` : ""}${d.drifts.length ? ` (wobbled ${d.drifts.length}x)` : ""}`);
   return `\n<decisions note="Firm decisions he made. Hold him to them: if he starts drifting, remind him what he decided and when, and ask for one clear call. Changing a decision is fine only with a real reason, said once.">\n${lines.join("\n") || "none yet"}\n</decisions>\n<practice note="What he's practising (Komal asked him to be more emotionally intelligent and decision-oriented, committed to what he says). Today's focus below; coach it briefly in briefs, ask about it in the night wrap-up.">\ntoday: ${p.title}. ${p.how}\n</practice>`;
 }
