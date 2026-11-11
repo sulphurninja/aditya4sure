@@ -50,7 +50,7 @@ export default async function TodayPage() {
 
       <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
         <div className="space-y-6">
-          <TodayBrief initial={{ morning: pick(latest.morning), night: pick(latest.night), weekly: pick(latest.weekly) }} defaultKind={hour >= 20 ? "night" : "morning"} />
+          <TodayBrief initial={{ morning: pick(latest.morning), night: pick(latest.night), weekly: pick(latest.weekly), monthly: pick(latest.monthly) }} defaultKind={hour >= 20 ? "night" : "morning"} />
           <TaskBoard initial={tasks} names={names} />
         </div>
 

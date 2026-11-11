@@ -15,7 +15,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return handle(async () => {
     await requireOwnerApi(req);
-    const { kind, send } = z.object({ kind: z.enum(["morning", "night", "weekly"]), send: z.boolean().default(false) }).parse(await req.json());
+    const { kind, send } = z.object({ kind: z.enum(["morning", "night", "weekly", "monthly"]), send: z.boolean().default(false) }).parse(await req.json());
     return Response.json({ entry: await runRhythm(kind, { send }) });
   });
 }

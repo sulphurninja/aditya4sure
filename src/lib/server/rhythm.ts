@@ -14,13 +14,15 @@ import { askBrain, forScreen, replyVoice } from "./whatsapp-inbound";
  * Each fires once per day (atomic marker), from the same every-minute tick as reminders.
  */
 
-export type RhythmKind = "morning" | "night" | "weekly";
+export type RhythmKind = "morning" | "night" | "weekly" | "monthly";
 export type RhythmEntry = { _id: string; ownerId: string; kind: RhythmKind; date: string; text: string; whatsapp: string; at: string };
 
 const PROMPTS: Record<RhythmKind, string> = {
   morning: "/brief",
   night:
     "[night check-in, scheduled] Write my night wrap-up check-in. First line: a one-line vibe check on the day. Then number my todos due today or overdue that are still open (time first if there is one) and ask which ones got done. Then ask if I spent or received any money today, and if there's anything I want you to remember or remind me about tomorrow. Short, my style. Tell me I can answer everything in one message.",
+  monthly:
+    "[monthly money report, scheduled] Write my money report for LAST month (it just ended): 1) in, spent, saved and what was left, vs the month before, 2) where it went, top categories and the biggest leaks, 3) recurring payments, 4) who owes who, 5) flat goal progress and what this month needs, 6) one honest money move for this month. Numbered, short, my style. Use only what's logged; say if something is missing.",
   weekly:
     "[weekly review, scheduled] Write my Sunday week review: 1) what got done this week, 2) what slipped or is overdue, 3) money this week and this month (in, spent, saved, in hand, flat goal progress), 4) what's coming up next week (dated plans, closest first), 5) one honest nudge. Numbered sections, short lines, my style.",
 };
@@ -31,6 +33,7 @@ function schedule(): Record<RhythmKind, string> {
     morning: process.env.RHYTHM_MORNING || "08:00",
     night: process.env.RHYTHM_NIGHT || "22:00",
     weekly: process.env.RHYTHM_WEEKLY || "19:00",
+    monthly: process.env.RHYTHM_MONTHLY || "09:00",
   };
 }
 
@@ -80,6 +83,7 @@ export async function runDueRhythms() {
   if (inWindow(s.morning)) due.push("morning");
   if (inWindow(s.night)) due.push("night");
   if (now.weekday === "Sunday" && inWindow(s.weekly)) due.push("weekly");
+  if (now.date.endsWith("-01") && inWindow(s.monthly)) due.push("monthly");
 
   const fired: string[] = [];
   const col = await log();

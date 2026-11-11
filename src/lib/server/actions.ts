@@ -68,8 +68,12 @@ export async function runActions(message: string, context = ""): Promise<ActionR
   // Money said in passing goes straight to the ledger (small, reversible, shown in the reply).
   if (MONEY.test(message)) {
     const parsed = await parseMoneyText(message).catch(() => null);
+    const { money: moneyCol } = await collections();
     for (const e of parsed?.entries ?? []) {
       if (!e.amount_inr || e.amount_inr <= 0) continue;
+      // Same bank SMS forwarded twice: the transaction reference catches it.
+      const ref = e.ref?.replace(/[^\w-]/g, "").slice(0, 40) || null;
+      if (ref && (await moneyCol.findOne({ ownerId: OWNER_ID, note: { $regex: `ref:${ref}` } }))) continue;
       const m = await createMoney(
         {
           kind: e.kind,
@@ -82,7 +86,7 @@ export async function runActions(message: string, context = ""): Promise<ActionR
           counterparty: e.counterparty,
           account: e.account,
           status: e.status,
-          note: e.note,
+          note: [e.note, ref ? `ref:${ref}` : null].filter(Boolean).join(" · ") || null,
           via: "chat",
         },
         "ai",
