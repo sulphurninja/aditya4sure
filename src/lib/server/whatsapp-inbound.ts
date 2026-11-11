@@ -11,7 +11,7 @@ import { createMoney, istToday } from "./money";
 import { getDb } from "./mongo";
 import { createTask } from "./tasks";
 import { speak, transcribe } from "./voice-io";
-import { publishVoiceNote, sendWhatsAppAudio, sendWhatsAppText, voiceNotesReady, whatsappConfig } from "./whatsapp";
+import { publishVoiceNote, rememberOwnerContact, sendWhatsAppAudio, sendWhatsAppText, voiceNotesReady, whatsappConfig } from "./whatsapp";
 
 /**
  * Aditya texting his own Jarvis on WhatsApp (via his Zaptick WABA webhook).
@@ -321,6 +321,8 @@ async function onImage(m: Record<string, unknown>, evt: ZaptickEvent) {
 /** Entry point, runs after the webhook has already said 200. */
 export async function handleInbound(evt: ZaptickEvent) {
   const m = evt.data?.message ?? {};
+  const contact = evt.data?.contact;
+  if (contact?.id && contact.phone) await rememberOwnerContact(contact.id, contact.phone).catch(() => {});
   const type = String(m.type ?? "text").toLowerCase();
   try {
     if (type === "text" || type === "button" || type === "interactive") {

@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac, randomBytes } from "node:crypto";
 import { safeEqual } from "./crypto";
 import { putBlob } from "./blob-store";
+import { getDb } from "./mongo";
 
 /**
  * WhatsApp via Aditya's own Zaptick account (WABA). Messages go only to HIS number (OWNER_WHATSAPP),
@@ -94,8 +95,37 @@ export async function publishVoiceNote(mp3: Uint8Array): Promise<string | null> 
   return `${publicUrl}/api/public/voice/${id}.mp3?e=${expires}&s=${signVoiceId(id, expires)}`;
 }
 
+/* ---------- his Zaptick contact id (the media endpoint needs it, not the phone) ---------- */
+
+type ContactDoc = { _id: string; contactId: string; phone: string; at: string };
+
+async function contactCol() {
+  return (await getDb()).collection<ContactDoc>("wa_contact");
+}
+
+/** Remember his contact id whenever he messages (the webhook carries it). */
+export async function rememberOwnerContact(contactId: string, phone: string) {
+  if (!contactId) return;
+  await (await contactCol()).updateOne({ _id: "owner" }, { $set: { contactId, phone, at: new Date().toISOString() } }, { upsert: true });
+}
+
+async function ownerContactId(): Promise<string | null> {
+  const saved = await (await contactCol()).findOne({ _id: "owner" });
+  if (saved?.contactId) return saved.contactId;
+  const { key, to } = whatsappConfig();
+  if (!key || !to) return null;
+  const digits = to.replace(/\D/g, "");
+  const res = await fetch(`${API}/conversations?search=${digits}&limit=5`, { headers: { "X-API-Key": key }, signal: AbortSignal.timeout(60_000) }).catch(() => null);
+  if (!res?.ok) return null;
+  const j = (await res.json().catch(() => ({}))) as { conversations?: { contact?: { _id?: string; phone?: string } }[] };
+  const hit = j.conversations?.find((c) => (c.contact?.phone ?? "").replace(/\D/g, "").endsWith(digits.slice(-10)));
+  if (hit?.contact?._id) await rememberOwnerContact(hit.contact._id, to);
+  return hit?.contact?._id ?? null;
+}
+
+/** Voice note / audio to his WhatsApp. Zaptick's media send: { contactId, messageType: "audio", mediaUrl }. */
 export async function sendWhatsAppAudio(link: string): Promise<SendResult> {
-  const { to } = whatsappConfig();
-  if (!to) return { ok: false, reason: "off", detail: "OWNER_WHATSAPP not set" };
-  return post("/messages", { to: to.replace(/^\+/, ""), type: "audio", audio: { link } });
+  const contactId = await ownerContactId();
+  if (!contactId) return { ok: false, reason: "error", detail: "couldn't find his Zaptick contact id yet (message the bot once)" };
+  return post("/messages", { contactId, messageType: "audio", mediaUrl: link });
 }
