@@ -11,6 +11,7 @@ import { getVoicePrefs, modelSupportsTags } from "@/lib/server/voice-io";
 import { actionsNote, runActions, type ActionResult } from "@/lib/server/actions";
 import { isHinglish } from "@/lib/language";
 import { moneyContextFor } from "@/lib/server/money";
+import { peopleContextFor } from "@/lib/server/people";
 import { whatsappReady } from "@/lib/server/whatsapp";
 import { listTasks } from "@/lib/server/tasks";
 import { contextText, searchThread } from "@/lib/server/threads";
@@ -120,7 +121,7 @@ export async function POST(req: Request) {
       limit: isBrief ? 32 : undefined,
     });
     const memories = evidence.map((e) => e.memory);
-    const [openTasks, freshest, moneyBlock, actionsDone] = await Promise.all([
+    const [openTasks, freshest, moneyBlock, actionsDone, peopleBlock] = await Promise.all([
       analysis.wantsRecent || /\b(todo|task|remind|owe|plate|deadline)/i.test(input.message) ? listTasks({ status: "open", limit: 20 }).catch(() => []) : Promise.resolve([]),
       c.threads.find({ ownerId: OWNER_ID }).sort({ lastAt: -1 }).limit(1).project<{ lastAt: string | null }>({ lastAt: 1 }).toArray().catch(() => []),
       moneyContextFor(isBrief ? "money" : input.message).catch(() => ""),
@@ -131,6 +132,8 @@ export async function POST(req: Request) {
             return [] as ActionResult[];
           })
         : Promise.resolve([] as ActionResult[]),
+      // "prep me for my call with Harsh" / gifts / birthdays / upcoming dates in briefs.
+      peopleContextFor(input.message, { brief: isBrief || (Boolean(input.automated) && /weekly|night/.test(input.message)) }).catch(() => ""),
     ]);
     const actionsBlock = actionsNote(actionsDone, whatsappReady());
     const knowsUpTo = freshest[0]?.lastAt ? new Date(freshest[0].lastAt).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) : null;
@@ -179,7 +182,7 @@ With Komal: ${voice.withKomal}` : voice.guide) : null;
     const history: LlmMessage[] = convo.messages.slice(-16).map((m) => ({ role: m.role, content: m.content }));
     const messages: LlmMessage[] = [
       ...history,
-      { role: "user", content: `${evidenceText}${moneyBlock}${actionsBlock}${excerptBlock}\n\n<question>\n${question}\n</question>${languageNote}${voiceNote}${waNote}` },
+      { role: "user", content: `${evidenceText}${moneyBlock}${peopleBlock}${actionsBlock}${excerptBlock}\n\n<question>\n${question}\n</question>${languageNote}${voiceNote}${waNote}` },
     ];
 
     const userMsg: ChatMessage = { id: newId("msg"), role: "user", content: input.message, at: now };

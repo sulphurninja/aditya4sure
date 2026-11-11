@@ -6,6 +6,7 @@ import { collections, nowIso } from "./db";
 import { Extracted, RULES, stageProposals } from "./extract";
 import { llmInfo, parseJson } from "./llm";
 import { getDb } from "./mongo";
+import { refreshImportantDates } from "./people";
 import { createTask, listTasks } from "./tasks";
 
 /**
@@ -137,7 +138,10 @@ export async function runDueLearning() {
   const claim = await log.updateOne({ _id: key }, { $setOnInsert: { _id: key, at: nowIso() } }, { upsert: true });
   if (!claim.upsertedCount) return null;
   try {
-    return await learnFromRecent();
+    const result = await learnFromRecent();
+    // New facts may mention birthdays/anniversaries: refresh the dates list once a night too.
+    await refreshImportantDates().catch(() => null);
+    return result;
   } catch (err) {
     await log.deleteOne({ _id: key });
     throw err;
