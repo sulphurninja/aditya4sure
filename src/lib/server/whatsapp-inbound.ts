@@ -90,11 +90,18 @@ async function waConversation(): Promise<string | null> {
 }
 
 /** Ask the same chat brain the app uses (server-to-server). automated = scheduled prompts: no todo/money actions. */
-export async function askBrain(message: string, voice: boolean, automated = false): Promise<{ text: string; actions: { title: string }[] }> {
+export async function askBrain(
+  message: string,
+  voice: boolean,
+  automated = false,
+  opts: { channel?: "whatsapp" | "voice" | "text"; conversationId?: string | null } = {},
+): Promise<{ text: string; actions: { title: string }[] }> {
+  const channel = opts.channel ?? "whatsapp";
+  const conversationId = opts.conversationId !== undefined ? opts.conversationId : channel === "whatsapp" ? await waConversation() : null;
   const res = await fetch(`${selfOrigin()}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-internal-secret": process.env.MCP_TOKEN ?? "" },
-    body: JSON.stringify({ message: message.slice(0, 8000), mode: "assistant", conversationId: await waConversation(), voice, channel: "whatsapp", automated }),
+    body: JSON.stringify({ message: message.slice(0, 8000), mode: "assistant", conversationId, voice, channel, automated }),
     signal: AbortSignal.timeout(120_000),
   });
   if (!res.ok || !res.body) throw new Error(`brain ${res.status}`);

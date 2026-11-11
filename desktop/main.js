@@ -3,13 +3,17 @@
 // - keeps running in the background when closed (tray), optional start at login
 // - mic allowed for ADITYA's own site only; audio can play without a tap
 // - one persistent login (you sign in once)
-const { app, BrowserWindow, Tray, Menu, globalShortcut, session, shell, nativeImage, ipcMain, screen } = require("electron");
+const { app, BrowserWindow, Tray, Menu, globalShortcut, session, shell, nativeImage, ipcMain, screen, clipboard, desktopCapturer, Notification } = require("electron");
 const path = require("node:path");
 
 // `npm run dev` (--local) points at your local `npm run dev` server; otherwise the live site.
 const APP_URL = (process.argv.includes("--local") ? "http://localhost:3000" : process.env.ADITYA_URL || "https://www.aditya4sure.dev").replace(/\/$/, "");
 const ORIGIN = new URL(APP_URL).origin;
 const HOTKEY = process.env.ADITYA_HOTKEY || "Control+Shift+Space";
+// Copy any text, press this: it's saved to the brain (memory / todo / money / reminder, whichever fits).
+const REMEMBER_KEY = process.env.ADITYA_REMEMBER_KEY || "Control+Shift+R";
+// Screenshot of the screen -> "what is this, what should I do / reply?" answered out loud.
+const SCREEN_KEY = process.env.ADITYA_SCREEN_KEY || "Control+Shift+A";
 const PARTITION = "persist:aditya";
 
 // Voice replies should play the moment she wakes, no "tap first".
@@ -96,6 +100,36 @@ function toggleOrb() {
   else showOrb(true);
 }
 
+function notify(title, body) {
+  if (Notification.isSupported()) new Notification({ title, body, icon: path.join(__dirname, "assets", "icon-256.png"), silent: false }).show();
+}
+
+function rememberClipboard() {
+  const text = clipboard.readText().trim();
+  if (!text) return notify("ADITYA", "copy some text first, then hit the hotkey");
+  notify("ADITYA", "got it, saving…");
+  win && win.webContents.send("aditya:capture", text.slice(0, 6000));
+}
+
+async function askAboutScreen() {
+  try {
+    // Hide the orb so it doesn't end up in the screenshot.
+    const wasVisible = win && win.isVisible();
+    if (wasVisible) win.hide();
+    await new Promise((r) => setTimeout(r, 180));
+    const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const scale = Math.min(1, 1600 / display.size.width);
+    const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: Math.round(display.size.width * scale), height: Math.round(display.size.height * scale) } });
+    const src = sources.find((s) => s.display_id === String(display.id)) || sources[0];
+    if (!src) return notify("ADITYA", "couldn't capture the screen");
+    const jpeg = src.thumbnail.toJPEG(72);
+    showOrb(false);
+    win.webContents.send("aditya:screen", `data:image/jpeg;base64,${jpeg.toString("base64")}`);
+  } catch (err) {
+    notify("ADITYA", `screen capture failed: ${err && err.message ? err.message : err}`);
+  }
+}
+
 function buildTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, "assets", "tray.png"));
   tray = new Tray(icon);
@@ -105,6 +139,8 @@ function buildTray() {
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: "Talk to me", accelerator: HOTKEY, click: () => showOrb(true) },
+        { label: "Remember copied text", accelerator: REMEMBER_KEY, click: rememberClipboard },
+        { label: "What's on my screen?", accelerator: SCREEN_KEY, click: askAboutScreen },
         { label: "Open full app", click: () => shell.openExternal(APP_URL) },
         { type: "separator" },
         {
@@ -146,6 +182,9 @@ app.whenReady().then(() => {
   buildTray();
 
   if (!globalShortcut.register(HOTKEY, toggleOrb)) console.warn(`[aditya] hotkey ${HOTKEY} is taken by another app`);
+  if (!globalShortcut.register(REMEMBER_KEY, rememberClipboard)) console.warn(`[aditya] hotkey ${REMEMBER_KEY} is taken`);
+  if (!globalShortcut.register(SCREEN_KEY, askAboutScreen)) console.warn(`[aditya] hotkey ${SCREEN_KEY} is taken`);
+  ipcMain.on("aditya:notify", (_e, title, body) => notify(String(title || "ADITYA"), String(body || "")));
 
   ipcMain.on("aditya:hide", () => win && win.hide());
   ipcMain.on("aditya:show", () => showOrb(false));

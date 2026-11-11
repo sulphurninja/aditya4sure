@@ -21,7 +21,15 @@ const IDLE_SLEEP_MS = 60_000;
 const noop = () => () => {};
 
 /** Bridge exposed by the Electron desktop app (desktop/preload.js). */
-type DesktopBridge = { isDesktop: true; onWake: (cb: () => void) => () => void; show: () => void; hide: () => void };
+type DesktopBridge = {
+  isDesktop: true;
+  onWake: (cb: () => void) => () => void;
+  onCapture?: (cb: (text: string) => void) => () => void;
+  onScreen?: (cb: (dataUrl: string) => void) => () => void;
+  notify?: (title: string, body: string) => void;
+  show: () => void;
+  hide: () => void;
+};
 function desktop(): DesktopBridge | null {
   return typeof window !== "undefined" ? ((window as unknown as { adityaDesktop?: DesktopBridge }).adityaDesktop ?? null) : null;
 }
@@ -526,6 +534,57 @@ export function VoiceMode({
       else if (phaseRef.current !== "listening") listenRef.current();
     });
   }, []);
+
+  // Desktop superpowers: Ctrl+Shift+R saves copied text, Ctrl+Shift+A reads the screen and answers out loud.
+  useEffect(() => {
+    const d = desktop();
+    if (!d?.onCapture || !d.onScreen) return;
+    const offCapture = d.onCapture(async (text) => {
+      try {
+        const r = await fetch("/api/desktop/capture", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+        const j = (await r.json()) as { summary?: string; actions?: string[]; error?: string };
+        if (!r.ok) throw new Error(j.error ?? "couldn't save that");
+        const body = [j.summary, ...(j.actions ?? [])].filter(Boolean).join("\n");
+        d.notify?.("saved to your brain", body);
+        toast.success(j.summary ?? "saved");
+      } catch (err) {
+        d.notify?.("ADITYA", err instanceof Error ? err.message : "couldn't save that");
+      }
+    });
+    const offScreen = d.onScreen(async (dataUrl) => {
+      silence();
+      setArmed(true);
+      setHistory((h) => {
+        const prev: VoiceTurn[] = [];
+        if (heardRef.current) prev.push({ role: "user", content: heardRef.current });
+        if (replyRef.current) prev.push({ role: "assistant", content: replyRef.current });
+        return [...h, ...prev];
+      });
+      setHeard("what's on my screen?");
+      setReply("");
+      setPhase("thinking");
+      try {
+        const r = await fetch("/api/desktop/screen", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: dataUrl, voice: true }) });
+        const j = (await r.json()) as { answer?: string; error?: string };
+        if (!r.ok || !j.answer) throw new Error(j.error ?? "couldn't read the screen");
+        setReply(screen(j.answer));
+        // Speak it sentence by sentence, like a normal reply.
+        streamDone.current = false;
+        const parts = clean(j.answer).match(/[^.!?…\n]+[.!?…]*\s*/g) ?? [clean(j.answer)];
+        for (const part of parts) if (part.trim()) say(part.trim());
+        streamDone.current = true;
+        if (mutedRef.current || (!queue.current.length && !playing.current)) finishTurn();
+        else void playNext();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "failed");
+        setPhase("idle");
+      }
+    });
+    return () => {
+      offCapture();
+      offScreen();
+    };
+  }, [finishTurn, playNext, say, silence]);
 
   // Browsers only allow audio playback after a real click/key; the first one anywhere on the page unlocks it.
   useEffect(() => {
