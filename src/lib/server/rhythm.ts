@@ -20,7 +20,7 @@ export type RhythmEntry = { _id: string; ownerId: string; kind: RhythmKind; date
 const PROMPTS: Record<RhythmKind, string> = {
   morning: "/brief",
   night:
-    "[night check-in, scheduled] Write my night wrap-up check-in. First line: a one-line vibe check on the day. Then number my todos due today or overdue that are still open (time first if there is one) and ask which ones got done. Then ask if I spent or received any money today, and if there's anything I want you to remember or remind me about tomorrow. Short, my style. Tell me I can answer everything in one message.",
+    "[night check-in, scheduled] Write my night wrap-up check-in. First line: a one-line vibe check on the day. Then number my todos due today or overdue that are still open (time first if there is one) and ask which ones got done. Then ask if I spent or received any money today, a quick comeback check-in on the habits not logged yet today (gym, smoke-free, sleep, skincare, in one line), and if there's anything I want you to remember or remind me about tomorrow. Short, my style. Tell me I can answer everything in one message.",
   monthly:
     "[monthly money report, scheduled] Write my money report for LAST month (it just ended): 1) in, spent, saved and what was left, vs the month before, 2) where it went, top categories and the biggest leaks, 3) recurring payments, 4) who owes who, 5) flat goal progress and what this month needs, 6) one honest money move for this month. Numbered, short, my style. Use only what's logged; say if something is missing.",
   weekly:
