@@ -151,7 +151,7 @@ export async function extractFromThread(threadId: string, opts: { before?: strin
   if (!slice.length) return { created: 0, skipped: 0, range: null };
   const others = thread.participants.filter((p) => p !== thread.selfName).join(", ") || "someone";
   const transcript = slice.map((m) => `<m from="${m.isSelf ? "self" : "other"}" name="${esc(m.sender)}" at="${m.at.slice(0, 16)}">${esc(contextText(m).slice(0, 1200))}</m>`).join("\n");
-  const system = THREAD_SYSTEM.replace("{{SOURCE}}", thread.source === "whatsapp" ? "WhatsApp" : "Instagram")
+  const system = THREAD_SYSTEM.replace("{{SOURCE}}", thread.source === "whatsapp" ? "WhatsApp" : thread.source === "chatgpt" ? "ChatGPT" : "Instagram")
     .replace("{{SELF}}", thread.selfName)
     .replace("{{OTHERS}}", others)
     .replace("{{TODAY}}", nowIso().slice(0, 10));
@@ -178,7 +178,7 @@ export async function resolveProposal(id: string, decision: "approve" | "reject"
   let label = p.sourceConversationId === "claude" ? "Spotted by Claude" : "Your chat with ADITYA";
   if (fromThread) {
     const t = await c.threads.findOne({ _id: p.sourceConversationId.slice(7), ownerId: OWNER_ID });
-    label = t ? `${t.source === "whatsapp" ? "WhatsApp" : "Instagram"} · ${t.title}` : "Imported chat";
+    label = t ? `${t.source === "whatsapp" ? "WhatsApp" : t.source === "chatgpt" ? "ChatGPT" : "Instagram"} · ${t.title}` : "Imported chat";
   }
   const memId = newId("mem");
   await c.memories.insertOne({

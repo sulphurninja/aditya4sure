@@ -8,6 +8,7 @@ import {
   FolderKanban,
   HeartPulse,
   Inbox,
+  Bot,
   ListChecks,
   SunMedium,
   MessagesSquare,
@@ -44,5 +45,6 @@ export const NAV: NavItem[] = [
   { href: "/vault", label: "memory vault", icon: Archive, group: "system" },
   { href: "/review", label: "review", icon: ShieldCheck, group: "system" },
   { href: "/sources", label: "sources", icon: Inbox, group: "system" },
+  { href: "/chatgpt", label: "chatgpt history", icon: Bot, group: "system" },
   { href: "/settings", label: "settings", icon: Settings, group: "system" },
 ];

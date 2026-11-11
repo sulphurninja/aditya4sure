@@ -31,7 +31,7 @@ const Out = z.object({
 
 export async function rebuildVoiceProfile() {
   const c = await collections();
-  const threads = await c.threads.find({ ownerId: OWNER_ID, selfName: { $ne: null } }).toArray();
+  const threads = await c.threads.find({ ownerId: OWNER_ID, selfName: { $ne: null }, source: { $ne: "chatgpt" } }).toArray();
   if (!threads.length) throw new HttpError(400, "Import a chat first");
   const selfBy = new Map(threads.map((t) => [t._id, t.selfName!]));
   const komalThreads = new Set(threads.filter((t) => t.entityId === "person:komal").map((t) => t._id));

@@ -93,7 +93,7 @@ export async function POST(req: Request) {
     let excerptBlock = "";
     let excerptCount = 0;
     const renderExcerpts = (thread: { source: string; title: string; selfName: string | null }, lines: Awaited<ReturnType<typeof searchThread>>["lines"]) => {
-      const src = thread.source === "whatsapp" ? "WhatsApp" : "Instagram";
+      const src = thread.source === "whatsapp" ? "WhatsApp" : thread.source === "chatgpt" ? "ChatGPT" : "Instagram";
       const rows = lines
         .map((l) => `<msg at="${istTime(l.at)} IST" from="${escapeXml(l.sender)}"${l.isSelf ? ' self="true"' : ""}>${escapeXml(contextText(l).slice(0, 700))}</msg>`)
         .join("\n");

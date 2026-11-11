@@ -41,7 +41,8 @@ export function messageIdFor(threadId: string, m: { at: string; sender: string; 
   return `msg_${sha256([threadId, at, m.sender, m.text, String(m.dup)].join("\u0000")).slice(0, 32)}`;
 }
 
-function threadKey(source: string, title: string, participants: string[]) {
+function threadKey(source: string, title: string, participants: string[], externalId?: string) {
+  if (externalId) return sha256([source, "id", externalId].join("\u0000")).slice(0, 32);
   return sha256([source, title.toLowerCase().trim(), ...[...participants].map((p) => p.toLowerCase().trim()).sort()].join("\u0000")).slice(0, 32);
 }
 
@@ -49,7 +50,7 @@ function threadKey(source: string, title: string, participants: string[]) {
 export async function createOrGetThread(raw: unknown): Promise<{ thread: ImportedThread; existed: boolean }> {
   const input = ThreadCreateInput.parse(raw);
   const c = await collections();
-  const key = threadKey(input.source, input.title, input.participants);
+  const key = threadKey(input.source, input.title, input.participants, input.externalId);
   const existing = await c.threads.findOne({ ownerId: OWNER_ID, key });
   if (existing) {
     if (input.selfName && existing.selfName !== input.selfName) {
@@ -59,7 +60,8 @@ export async function createOrGetThread(raw: unknown): Promise<{ thread: Importe
     return { thread: existing, existed: true };
   }
   const others = input.participants.filter((p) => p !== input.selfName);
-  const entityId = detectEntities([input.title, ...others].join(" ")).find((e) => e !== "person:aditya") ?? null;
+  // ChatGPT conversations aren't "with" a person; who wrote them is decided by the author check.
+  const entityId = input.source === "chatgpt" ? null : (detectEntities([input.title, ...others].join(" ")).find((e) => e !== "person:aditya") ?? null);
   const now = nowIso();
   const thread: ImportedThread = {
     _id: newId("thr"),
@@ -170,9 +172,11 @@ async function withMedia(messages: ThreadMessage[]): Promise<ThreadMessage[]> {
   return messages.map((m) => (m.mediaId ? { ...m, media: byId.get(m.mediaId) ?? null } : m));
 }
 
-export async function listThreads() {
+/** WhatsApp / Instagram chats. ChatGPT conversations (hundreds) live on their own screen. */
+export async function listThreads(opts: { source?: "chatgpt" | "chats" } = {}) {
   const c = await collections();
-  return c.threads.find({ ownerId: OWNER_ID }).sort({ lastAt: -1 }).toArray();
+  const source = opts.source === "chatgpt" ? "chatgpt" : { $ne: "chatgpt" as const };
+  return c.threads.find({ ownerId: OWNER_ID, source }).sort({ lastAt: -1 }).toArray();
 }
 
 export async function getThread(id: string) {

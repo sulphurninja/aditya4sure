@@ -105,7 +105,7 @@ const NUDGE_ICON: Record<Nudge["icon"], LucideIcon> = {
 
 type UiMessage = ChatMessage & { pending?: boolean; evidence?: ChatCitation[]; strategy?: string[]; error?: string };
 type ConvoSummary = { _id: string; title: string; updatedAt: string; mode: PersonaMode; channel?: "text" | "voice" | "whatsapp" };
-type ThreadInfo = { _id: string; title: string; source: "whatsapp" | "instagram" } | null;
+type ThreadInfo = { _id: string; title: string; source: "whatsapp" | "instagram" | "chatgpt" } | null;
 
 function CitationChip({ c }: { c: ChatCitation | undefined }) {
   const [open, setOpen] = useState(false);

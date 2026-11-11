@@ -201,7 +201,7 @@ export type Conversation = {
 
 /* ---------- imported chats (WhatsApp / Instagram) ---------- */
 
-export const THREAD_SOURCES = ["whatsapp", "instagram"] as const;
+export const THREAD_SOURCES = ["whatsapp", "instagram", "chatgpt"] as const;
 export type ThreadSource = (typeof THREAD_SOURCES)[number];
 
 export type ImportedThread = {
@@ -222,6 +222,18 @@ export type ImportedThread = {
   firstAt: string | null;
   lastAt: string | null;
   wallpaper?: Wallpaper;
+  /** Source's own id (ChatGPT conversation id), so two chats with the same title never merge. */
+  externalId?: string | null;
+  /**
+   * ChatGPT account is shared with his mother: who actually wrote the "you" side.
+   * Only "aditya" conversations feed his brain; "mother" ones are hers and never become facts about him.
+   */
+  author?: "aditya" | "mother" | "unknown" | null;
+  authorConfidence?: number | null;
+  authorReason?: string | null;
+  authorBy?: "ai" | "owner" | null;
+  /** When its facts were digested into the brain. */
+  learnedAt?: string | null;
   consentAt: string;
   createdAt: string;
   updatedAt: string;
@@ -290,6 +302,7 @@ export const ThreadCreateInput = z.object({
   title: z.string().trim().min(1).max(160),
   participants: z.array(z.string().trim().min(1).max(120)).min(1).max(300),
   selfName: z.string().trim().max(120).nullable(),
+  externalId: z.string().trim().max(120).optional(),
   consent: z.literal(true),
 });
 
