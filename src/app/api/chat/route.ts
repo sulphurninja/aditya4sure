@@ -125,7 +125,7 @@ export async function POST(req: Request) {
       c.threads.find({ ownerId: OWNER_ID }).sort({ lastAt: -1 }).limit(1).project<{ lastAt: string | null }>({ lastAt: 1 }).toArray().catch(() => []),
       moneyContextFor(isBrief ? "money" : input.message).catch(() => ""),
       // "I have a meeting with Pranav at 3" -> saved as a todo + reminder before the reply is written.
-      input.mode === "assistant" && !isBrief
+      input.mode === "assistant" && !isBrief && !input.automated
         ? runActions(input.message, lastUser).catch((err) => {
             console.error("[chat] actions failed:", err instanceof Error ? err.message.slice(0, 160) : "unknown");
             return [] as ActionResult[];

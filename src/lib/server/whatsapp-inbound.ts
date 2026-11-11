@@ -88,11 +88,12 @@ async function waConversation(): Promise<string | null> {
   return null;
 }
 
-async function askBrain(message: string, voice: boolean): Promise<{ text: string; actions: { title: string }[] }> {
+/** Ask the same chat brain the app uses (server-to-server). automated = scheduled prompts: no todo/money actions. */
+export async function askBrain(message: string, voice: boolean, automated = false): Promise<{ text: string; actions: { title: string }[] }> {
   const res = await fetch(`${selfOrigin()}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-internal-secret": process.env.MCP_TOKEN ?? "" },
-    body: JSON.stringify({ message: message.slice(0, 8000), mode: "assistant", conversationId: await waConversation(), voice, channel: "whatsapp" }),
+    body: JSON.stringify({ message: message.slice(0, 8000), mode: "assistant", conversationId: await waConversation(), voice, channel: "whatsapp", automated }),
     signal: AbortSignal.timeout(120_000),
   });
   if (!res.ok || !res.body) throw new Error(`brain ${res.status}`);
@@ -108,7 +109,7 @@ async function askBrain(message: string, voice: boolean): Promise<{ text: string
   return { text: text.replace(/\s*\[(M\d+(?:\s*,\s*M\d+)*)\]/g, "").trim(), actions };
 }
 
-const forScreen = (t: string) => t.replace(/\[[a-z][a-z ]{1,24}\]\s*/gi, "").replace(/ {2,}/g, " ").trim();
+export const forScreen = (t: string) => t.replace(/\[[a-z][a-z ]{1,24}\]\s*/gi, "").replace(/ {2,}/g, " ").trim();
 
 /* ---------- media ---------- */
 
@@ -180,7 +181,7 @@ async function replyText(text: string) {
   return r;
 }
 
-async function replyVoice(spoken: string) {
+export async function replyVoice(spoken: string) {
   if (!voiceNotesReady()) return;
   try {
     const mp3 = new Uint8Array(await (await speak(spoken)).arrayBuffer());

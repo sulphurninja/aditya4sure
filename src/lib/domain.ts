@@ -418,6 +418,8 @@ export const ChatInput = z.object({
   voice: z.boolean().default(false),
   /** Where the message came from; WhatsApp replies are written as short texts. */
   channel: z.enum(["text", "voice", "whatsapp"]).optional(),
+  /** Scheduled prompts (morning brief, night wrap): never run todo/money actions on them. */
+  automated: z.boolean().optional(),
 });
 
 export const StyleSampleInput = z.object({

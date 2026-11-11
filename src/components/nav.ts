@@ -9,6 +9,7 @@ import {
   HeartPulse,
   Inbox,
   ListChecks,
+  SunMedium,
   MessagesSquare,
   Music4,
   Settings,
@@ -24,6 +25,7 @@ import {
 export type NavItem = { href: string; label: string; icon: LucideIcon; group: "core" | "life" | "system" };
 
 export const NAV: NavItem[] = [
+  { href: "/today", label: "today", icon: SunMedium, group: "core" },
   { href: "/", label: "chat", icon: Sparkles, group: "core" },
   { href: "/talk", label: "talk to me", icon: AudioLines, group: "core" },
   { href: "/todos", label: "todos", icon: ListChecks, group: "core" },

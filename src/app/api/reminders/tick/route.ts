@@ -1,7 +1,8 @@
 import { safeEqual } from "@/lib/server/crypto";
 import { dispatchDueReminders } from "@/lib/server/reminders";
+import { runDueRhythms } from "@/lib/server/rhythm";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /**
  * Fires due reminders. Two callers, each with its own secret:
@@ -20,7 +21,8 @@ function authorized(req: Request) {
 async function tick(req: Request) {
   if (!authorized(req)) return Response.json({ error: "unauthorized" }, { status: 401 });
   try {
-    return Response.json(await dispatchDueReminders());
+    const [reminders, rhythm] = await Promise.all([dispatchDueReminders(), runDueRhythms().catch(() => ({ fired: [] as string[] }))]);
+    return Response.json({ ...reminders, rhythm: rhythm.fired });
   } catch (err) {
     console.error("[tick] failed:", err instanceof Error ? err.message.slice(0, 160) : "unknown");
     return Response.json({ error: "tick failed" }, { status: 500 });
