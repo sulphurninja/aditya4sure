@@ -42,7 +42,16 @@ export class WakeListener {
   private wanted = false;
   private fired = false;
 
-  constructor(private onWake: (rest: string) => void, private onBlocked: (reason: string) => void) {}
+  constructor(
+    private onWake: (rest: string) => void,
+    private onBlocked: (reason: string) => void,
+    /** Live text of what standby is hearing, so you can see it's working. */
+    private onHeard: (text: string) => void = () => {},
+  ) {}
+
+  get active() {
+    return this.wanted;
+  }
 
   start() {
     const C = ctor();
@@ -73,6 +82,7 @@ export class WakeListener {
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
         const text = r[0].transcript;
+        this.onHeard(text.trim());
         const m = WAKE.exec(text);
         if (!m) continue;
         pendingWake = true;
@@ -86,8 +96,16 @@ export class WakeListener {
     rec.onerror = (e) => {
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
         this.wanted = false;
-        this.onBlocked("the browser blocked speech recognition for the wake word");
+        this.onBlocked("the browser blocked the mic for the wake word. allow microphone for this site");
+      } else if (e.error === "network") {
+        // Chrome/Edge send standby audio to their speech service; Brave and some setups block it.
+        this.wanted = false;
+        this.onBlocked("this browser's speech service isn't reachable (Brave blocks it). use Chrome/Edge, or tap the orb");
+      } else if (e.error === "language-not-supported") {
+        this.wanted = false;
+        this.onBlocked("this browser can't do speech recognition, tap the orb instead");
       }
+      // "no-speech" and "aborted" are normal; onend restarts standby.
     };
     rec.onend = () => {
       // Chrome ends continuous recognition every so often; keep standby alive.

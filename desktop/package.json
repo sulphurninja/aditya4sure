@@ -1,0 +1,40 @@
+{
+  "name": "aditya-desktop",
+  "productName": "ADITYA",
+  "version": "0.1.0",
+  "description": "ADITYA on the desktop: floating voice orb, global hotkey, tray, runs in the background.",
+  "main": "main.js",
+  "private": true,
+  "author": "Aditya Pingle",
+  "scripts": {
+    "start": "node launch.js",
+    "dev": "node launch.js --local",
+    "dist": "electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "dev.aditya4sure.desktop",
+    "productName": "ADITYA",
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon-256.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true
+    },
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.3.0",
+    "electron-builder": "^26.18.0"
+  }
+}

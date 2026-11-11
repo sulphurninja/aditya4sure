@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { VoiceOrb, type OrbState } from "./voice-orb";
 import { VoicePicker } from "./voice-picker";
-import { chime, SLEEP, WakeListener, wakeSupported } from "./wake";
+import { chime, SLEEP, WAKE, WakeListener, wakeSupported } from "./wake";
 
 type Status = { enabled: boolean; usage: { month: string; ttsChars: number; sttMinutes: number; charCap: number; sttMinuteCap: number }; quota: { used: number; limit: number; resetsAt: string | null } | null };
 type Phase = "idle" | "listening" | "transcribing" | "thinking" | "speaking" | "error";
@@ -19,6 +19,13 @@ const RESTART_MS = 15_000;
 /** Awake with nothing said for this long = back to sleep (standby). */
 const IDLE_SLEEP_MS = 60_000;
 const noop = () => () => {};
+
+/** Bridge exposed by the Electron desktop app (desktop/preload.js). */
+type DesktopBridge = { isDesktop: true; onWake: (cb: () => void) => () => void; show: () => void; hide: () => void };
+function desktop(): DesktopBridge | null {
+  return typeof window !== "undefined" ? ((window as unknown as { adityaDesktop?: DesktopBridge }).adityaDesktop ?? null) : null;
+}
+const isDesktopSnapshot = () => Boolean(desktop());
 
 function pickMime() {
   if (typeof MediaRecorder === "undefined") return "";
@@ -81,7 +88,8 @@ export function VoiceMode({
   /** awake = in a conversation, listens again after every reply. asleep = waits for the wake phrase. */
   const [awake, setAwake] = useState(false);
   const [armed, setArmed] = useState(false);
-  const canWake = useSyncExternalStore(noop, wakeSupported, () => false);
+  const isDesktop = useSyncExternalStore(noop, isDesktopSnapshot, () => false);
+  const canWake = useSyncExternalStore(noop, wakeSupported, () => false) && !isDesktop;
   const [wakeOn, setWakeOn] = useState(true);
   const [muted, setMuted] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -105,6 +113,7 @@ export function VoiceMode({
   const sleepAfterTurn = useRef(false);
   const wakeRef = useRef<WakeListener | null>(null);
   const sleepRef = useRef<() => void>(() => {});
+  const wakeUpRef = useRef<(rest: string) => void>(() => {});
   const mutedRef = useRef(muted);
   const listenRef = useRef<() => void>(() => {});
 
@@ -394,6 +403,14 @@ export function VoiceMode({
         });
         setReply("");
         setHeard(text);
+        const woke = WAKE.exec(text);
+        if (woke && woke.index < 3) {
+          const restOfIt = text.slice(woke.index + woke[0].length).trim();
+          if (restOfIt.length < 3) {
+            if (awakeRef.current) setTimeout(() => listenRef.current(), 50);
+            return;
+          }
+        }
         // "bye" / "that's all" / "go to sleep": say later and drop back to standby.
         if (SLEEP.test(text)) {
           sleepAfterTurn.current = true;
@@ -454,6 +471,22 @@ export function VoiceMode({
     [ask, audio, listen],
   );
 
+  const [standbyHeard, setStandbyHeard] = useState("");
+  const startStandby = useCallback(() => {
+    wakeRef.current ??= new WakeListener(
+      (rest) => {
+        setStandbyHeard("");
+        wakeUpRef.current(rest);
+      },
+      (reason) => {
+        toast.error(reason);
+        setWakeOn(false);
+      },
+      (text) => setStandbyHeard(text.slice(-80)),
+    );
+    wakeRef.current.start();
+  }, []);
+
   /** Standby: stop the mic, listen only for the wake phrase (if on). */
   const goToSleep = useCallback(() => {
     awakeRef.current = false;
@@ -468,35 +501,46 @@ export function VoiceMode({
     setPhase("idle");
     if (ctxRef.current) chime(ctxRef.current, false);
     if (wakeOnRef.current && canWake) {
-      wakeRef.current ??= new WakeListener(
-        (rest) => wakeUp(rest),
-        (reason) => {
-          toast.error(reason);
-          setWakeOn(false);
-        },
-      );
-      wakeRef.current.start();
+      startStandby();
     }
-  }, [canWake, stopMic, wakeUp]);
+  }, [canWake, startStandby, stopMic]);
 
   useEffect(() => {
     sleepRef.current = goToSleep;
-  }, [goToSleep]);
+    wakeUpRef.current = wakeUp;
+  }, [goToSleep, wakeUp]);
 
-  // Wake word toggled while asleep and armed: start/stop standby listening.
+  // Standby runs whenever she's asleep and the wake word is on, from the moment /talk opens.
   useEffect(() => {
-    if (!armed || awake || !canWake) return;
-    if (wakeOn) {
-      wakeRef.current ??= new WakeListener(
-        (rest) => wakeUp(rest),
-        (reason) => {
-          toast.error(reason);
-          setWakeOn(false);
-        },
-      );
-      wakeRef.current.start();
-    } else wakeRef.current?.stop();
-  }, [armed, awake, canWake, wakeOn, wakeUp]);
+    if (awake || !canWake || !status.enabled) return;
+    if (wakeOn) startStandby();
+    else wakeRef.current?.stop();
+  }, [awake, canWake, status.enabled, wakeOn, startStandby]);
+
+  useEffect(() => {
+    const d = desktop();
+    if (!d) return;
+    return d.onWake(() => {
+      setArmed(true);
+      if (!awakeRef.current) wakeUpRef.current("");
+      else if (phaseRef.current !== "listening") listenRef.current();
+    });
+  }, []);
+
+  // Browsers only allow audio playback after a real click/key; the first one anywhere on the page unlocks it.
+  useEffect(() => {
+    if (armed) return;
+    const unlock = () => {
+      audio();
+      setArmed(true);
+    };
+    window.addEventListener("pointerdown", unlock, { once: true });
+    window.addEventListener("keydown", unlock, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+  }, [armed, audio]);
 
   function newSession() {
     stopAll();
@@ -556,11 +600,7 @@ export function VoiceMode({
   );
 
   const orbState: OrbState = phase === "transcribing" ? "thinking" : phase === "error" ? "error" : phase;
-  const asleepHint = !armed
-    ? "tap me once to switch me on"
-    : wakeOn && canWake
-      ? `sleeping. say "yo wassup gang" or tap me`
-      : "sleeping. tap me to talk";
+  const asleepHint = isDesktop ? "ctrl+shift+space or tap me" : wakeOn && canWake ? `say "yo wassup gang" or tap me` : "tap me to talk";
   const hint = !status.enabled
     ? "add ELEVENLABS_API_KEY to .env.local to wake me up"
     : phase === "idle" && !awake
@@ -569,7 +609,20 @@ export function VoiceMode({
   const u = status.usage;
 
   return (
-    <div className="relative flex min-h-dvh flex-col items-center justify-between px-5 pb-8 pt-20 lg:pt-10">
+    <div className={cn("relative flex min-h-dvh flex-col items-center justify-between px-5 pb-8", isDesktop ? "pt-10" : "pt-20 lg:pt-10")}>
+      {isDesktop && (
+        <div className="fixed inset-x-0 top-0 z-[60] flex h-8 items-center justify-end px-2 [-webkit-app-region:drag]">
+          <button
+            type="button"
+            onClick={() => desktop()?.hide()}
+            aria-label="hide to tray"
+            title="hide (ctrl+shift+space brings me back)"
+            className="grid size-6 place-items-center rounded-full text-faint transition hover:bg-panel-2 hover:text-fg [-webkit-app-region:no-drag]"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
       <div className="flex w-full max-w-3xl items-center justify-between gap-2">
         <div className="relative min-w-0">
           <button
@@ -630,6 +683,9 @@ export function VoiceMode({
           {(phase === "transcribing" || phase === "thinking") && <Loader2 className="absolute size-6 animate-spin text-accent-ink/70" />}
         </button>
         <p className={cn("mt-4 h-5 text-sm transition", phase === "listening" ? "text-accent" : "text-muted")}>{hint}</p>
+        {!awake && wakeOn && canWake && status.enabled && (
+          <p className="mt-1 h-4 max-w-xs truncate text-center font-mono text-[10.5px] text-faint">{standbyHeard ? `hearing: ${standbyHeard}` : "standby on, listening for the wake phrase"}</p>
+        )}
       </div>
 
       <div className="relative w-full max-w-2xl">
