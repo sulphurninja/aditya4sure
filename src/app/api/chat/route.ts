@@ -1,7 +1,7 @@
 import { buildEvidenceBlock, buildSystemPrompt, extractCitations } from "@/lib/ai/prompt";
 import { ChatInput, OWNER_ID, type ChatCitation, type ChatMessage, type Conversation } from "@/lib/domain";
 import { audit } from "@/lib/server/audit";
-import { handle, HttpError, requireOwnerApi } from "@/lib/server/auth";
+import { handle, HttpError, requireOwnerOrInternal } from "@/lib/server/auth";
 import { describeLlmError, llmInfo, streamText, type LlmMessage } from "@/lib/server/llm";
 import { collections, newId, nowIso } from "@/lib/server/db";
 import { env } from "@/lib/server/env";
@@ -51,7 +51,7 @@ function toCitation(m: import("@/lib/domain").Memory, i: number): ChatCitation {
 
 export async function POST(req: Request) {
   return handle(async () => {
-    await requireOwnerApi(req);
+    await requireOwnerOrInternal(req);
     const len = Number(req.headers.get("content-length") ?? 0);
     if (len > 64_000) throw new HttpError(413, "Message too large");
     const input = ChatInput.parse(await req.json());
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
         messages: [],
         threadId,
         wallpaper,
-        channel: input.voice ? "voice" : "text",
+        channel: input.channel ?? (input.voice ? "voice" : "text"),
         createdAt: now,
         updatedAt: now,
       };
@@ -164,6 +164,10 @@ With Komal: ${voice.withKomal}` : voice.guide) : null;
     const voiceLang = englishBrain
       ? " LANGUAGE: he spoke English, so reply in plain natural English only. Not a single Hindi word, no 'yaar', no 'arre', no 'na'. An Indian accent in the voice does not mean Hinglish."
       : ` LANGUAGE: he spoke Hinglish, so reply in casual Hinglish written in Roman letters (never Devanagari).${vPrefs?.gender === "female" ? " Your voice is female, so when you refer to yourself in Hindi use feminine forms (main bata rahi hoon, kar deti hoon, main aa gayi)." : ""}`;
+    const waNote =
+      input.channel === "whatsapp" && !input.voice
+        ? "\n<reply_format>This reply goes to his WhatsApp. Text him like a friend: short, plain text, no headers, no [M#] tags. When you list 2 or more things (meetings, todos, options, steps), use a numbered list, one per line: 1. ... 2. ... 3. ... with a time first when there is one (1. 3 PM, Pranav: automations + templates). One short line before the list is fine. Never merge two items into one or split one into two. *bold* only if something is truly critical.</reply_format>"
+        : "";
     const voiceNote = input.voice
       ? `\n<reply_format>${voiceLang} This reply is SPOKEN out loud by a voice, like his Jarvis talking to him. Sound like a sharp, witty best friend on a call, not an assistant reading a report: react first ("ohh", "nah", "okay so"), then the point, with opinions and a bit of teasing when it fits. 1 to 3 short sentences. No lists, no markdown, no [M#] tags, no emojis, no URLs. Say amounts the way he'd say them (14k, 2 lakh). If it needs more, give the gist and offer to go deeper.${
           voiceTags
@@ -175,7 +179,7 @@ With Komal: ${voice.withKomal}` : voice.guide) : null;
     const history: LlmMessage[] = convo.messages.slice(-16).map((m) => ({ role: m.role, content: m.content }));
     const messages: LlmMessage[] = [
       ...history,
-      { role: "user", content: `${evidenceText}${moneyBlock}${actionsBlock}${excerptBlock}\n\n<question>\n${question}\n</question>${languageNote}${voiceNote}` },
+      { role: "user", content: `${evidenceText}${moneyBlock}${actionsBlock}${excerptBlock}\n\n<question>\n${question}\n</question>${languageNote}${voiceNote}${waNote}` },
     ];
 
     const userMsg: ChatMessage = { id: newId("msg"), role: "user", content: input.message, at: now };

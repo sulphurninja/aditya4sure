@@ -65,3 +65,17 @@ export async function handle(fn: () => Promise<Response>): Promise<Response> {
     return Response.json({ error: "Something went wrong" }, { status: 500 });
   }
 }
+
+/**
+ * Same as requireOwnerApi, but also accepts the app's own server-to-server calls
+ * (WhatsApp webhook -> chat brain) signed with MCP_TOKEN in "x-internal-secret".
+ */
+export async function requireOwnerOrInternal(req: Request): Promise<string> {
+  const secret = process.env.MCP_TOKEN;
+  const given = req.headers.get("x-internal-secret");
+  if (secret && given && given.length === secret.length) {
+    const { safeEqual } = await import("./crypto");
+    if (safeEqual(given, secret)) return OWNER_ID;
+  }
+  return requireOwnerApi(req);
+}

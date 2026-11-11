@@ -194,7 +194,7 @@ export type Conversation = {
   threadId?: string | null;
   wallpaper?: Wallpaper;
   /** Where it happened: typed chat or a voice session at /talk (both share the same history). */
-  channel?: "text" | "voice";
+  channel?: "text" | "voice" | "whatsapp";
   createdAt: string;
   updatedAt: string;
 };
@@ -416,6 +416,8 @@ export const ChatInput = z.object({
   includeSensitive: z.boolean().default(true),
   /** Voice mode: the reply gets spoken aloud, so keep it short and sayable. */
   voice: z.boolean().default(false),
+  /** Where the message came from; WhatsApp replies are written as short texts. */
+  channel: z.enum(["text", "voice", "whatsapp"]).optional(),
 });
 
 export const StyleSampleInput = z.object({

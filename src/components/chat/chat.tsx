@@ -104,7 +104,7 @@ const NUDGE_ICON: Record<Nudge["icon"], LucideIcon> = {
 };
 
 type UiMessage = ChatMessage & { pending?: boolean; evidence?: ChatCitation[]; strategy?: string[]; error?: string };
-type ConvoSummary = { _id: string; title: string; updatedAt: string; mode: PersonaMode; channel?: "text" | "voice" };
+type ConvoSummary = { _id: string; title: string; updatedAt: string; mode: PersonaMode; channel?: "text" | "voice" | "whatsapp" };
 type ThreadInfo = { _id: string; title: string; source: "whatsapp" | "instagram" } | null;
 
 function CitationChip({ c }: { c: ChatCitation | undefined }) {
@@ -369,7 +369,7 @@ export function Chat({
         {conversations.map((c) => (
           <div key={c._id} className={cn("group flex items-center rounded-xl pr-1 transition", c._id === convoId ? "bg-panel-2" : "hover:bg-panel-2/60")}>
             <a href={`/?c=${c._id}`} className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-[13px] text-muted hover:text-fg">
-              {c.channel === "voice" ? <AudioLines className="size-3.5 shrink-0 text-accent" aria-label="voice session" /> : (() => { const I = MODES.find((m) => m.id === c.mode)?.icon ?? Brain; return <I className="size-3.5 shrink-0 text-faint" />; })()}
+              {c.channel === "whatsapp" ? <SourceIcon source="whatsapp" className="size-3.5 shrink-0" /> : c.channel === "voice" ? <AudioLines className="size-3.5 shrink-0 text-accent" aria-label="voice session" /> : (() => { const I = MODES.find((m) => m.id === c.mode)?.icon ?? Brain; return <I className="size-3.5 shrink-0 text-faint" />; })()}
               <span className="truncate">{c.title}</span>
             </a>
             <button onClick={() => remove(c._id)} className="hidden rounded-lg p-1 text-faint hover:text-danger group-hover:block" aria-label="Delete chat">

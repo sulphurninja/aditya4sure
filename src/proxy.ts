@@ -10,8 +10,13 @@ export async function proxy(req: NextRequest) {
   // /api/mcp authenticates Claude with its own secret token inside the route.
   const isPublic = pathname === "/login" || pathname.startsWith("/api/auth/") || pathname === "/api/mcp" || pathname.startsWith("/api/mcp/") ||
     // Scheduler tick (own secret) and signed, expiring voice-note links for WhatsApp.
-    pathname === "/api/reminders/tick" || pathname.startsWith("/api/public/voice/");
+    pathname === "/api/reminders/tick" || pathname.startsWith("/api/public/voice/") ||
+    // Zaptick webhook (HMAC-signed, verified in the route).
+    pathname === "/api/whatsapp/webhook";
   if (isPublic) return NextResponse.next();
+
+  // Server-to-server: the WhatsApp handler calls the chat brain with the app's own secret (re-checked in the route).
+  if (pathname === "/api/chat" && sameSecret(req.headers.get("x-internal-secret"), process.env.MCP_TOKEN)) return NextResponse.next();
 
   const ok = await verifySession(req.cookies.get(SESSION_COOKIE)?.value).catch(() => false);
   if (ok) return NextResponse.next();
@@ -23,6 +28,14 @@ export async function proxy(req: NextRequest) {
   url.pathname = "/login";
   url.search = "";
   return NextResponse.redirect(url);
+}
+
+/** Constant-time compare (proxy can't import the server crypto helpers). */
+function sameSecret(a: string | null, b: string | undefined) {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 export const config = {

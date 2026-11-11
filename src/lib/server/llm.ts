@@ -16,7 +16,7 @@ export type Provider = "anthropic" | "openai";
 /** "none" = no reasoning (fast rewrites); Anthropic has no such level, so it maps to "low" there. */
 export type Effort = "none" | "low" | "medium" | "high";
 const anthropicEffort = (e: Effort) => (e === "none" ? "low" : e);
-export type LlmImage = { base64: string; mediaType: "image/jpeg" };
+export type LlmImage = { base64: string; mediaType: "image/jpeg" | "image/png" | "image/webp" };
 export type LlmMessage = { role: "user" | "assistant"; content: string };
 
 export function provider(): Provider {
