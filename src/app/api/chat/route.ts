@@ -13,6 +13,7 @@ import { isHinglish } from "@/lib/language";
 import { moneyContextFor } from "@/lib/server/money";
 import { peopleContextFor } from "@/lib/server/people";
 import { habitsContext } from "@/lib/server/habits";
+import { decisionsContext } from "@/lib/server/decisions";
 import { whatsappReady } from "@/lib/server/whatsapp";
 import { listTasks } from "@/lib/server/tasks";
 import { contextText, searchThread } from "@/lib/server/threads";
@@ -122,7 +123,7 @@ export async function POST(req: Request) {
       limit: isBrief ? 32 : undefined,
     });
     const memories = evidence.map((e) => e.memory);
-    const [openTasks, freshest, moneyBlock, actionsDone, peopleBlock, habitsBlock] = await Promise.all([
+    const [openTasks, freshest, moneyBlock, actionsDone, peopleBlock, habitsBlock, decisionsBlock] = await Promise.all([
       analysis.wantsRecent || /\b(todo|task|remind|owe|plate|deadline)/i.test(input.message) ? listTasks({ status: "open", limit: 20 }).catch(() => []) : Promise.resolve([]),
       c.threads.find({ ownerId: OWNER_ID }).sort({ lastAt: -1 }).limit(1).project<{ lastAt: string | null }>({ lastAt: 1 }).toArray().catch(() => []),
       moneyContextFor(isBrief ? "money" : input.message).catch(() => ""),
@@ -137,6 +138,8 @@ export async function POST(req: Request) {
       peopleContextFor(input.message, { brief: isBrief || (Boolean(input.automated) && /weekly|night/.test(input.message)) }).catch(() => ""),
       // Comeback coach: briefs, wrap-ups and any habit talk get today's state + streaks.
       isBrief || input.automated || /\b(gym|workout|smok|cig|sleep|slept|skin ?care|habit|streak|comeback|routine)/i.test(input.message) ? habitsContext().catch(() => "") : Promise.resolve(""),
+      // Firm decisions + today's practice: briefs, wrap-ups, and any plan / decision / Komal talk.
+      isBrief || input.automated || /\b(decid|decision|plan|final|locked|dekhte|cancel|instead|komal|bubu|sunday|weekend|promise|commit)/i.test(input.message) ? decisionsContext().catch(() => "") : Promise.resolve(""),
     ]);
     const actionsBlock = actionsNote(actionsDone, whatsappReady());
     const knowsUpTo = freshest[0]?.lastAt ? new Date(freshest[0].lastAt).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }) : null;
@@ -189,7 +192,7 @@ With Komal: ${voice.withKomal}` : voice.guide) : null;
     const history: LlmMessage[] = convo.messages.slice(-16).map((m) => ({ role: m.role, content: m.content }));
     const messages: LlmMessage[] = [
       ...history,
-      { role: "user", content: `${evidenceText}${moneyBlock}${peopleBlock}${habitsBlock}${actionsBlock}${excerptBlock}\n\n<question>\n${question}\n</question>${languageNote}${voiceNote}${waNote}${rewriteNote}` },
+      { role: "user", content: `${evidenceText}${moneyBlock}${peopleBlock}${habitsBlock}${decisionsBlock}${actionsBlock}${excerptBlock}\n\n<question>\n${question}\n</question>${languageNote}${voiceNote}${waNote}${rewriteNote}` },
     ];
 
     const userMsg: ChatMessage = { id: newId("msg"), role: "user", content: input.message, at: now };

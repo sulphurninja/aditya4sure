@@ -1,5 +1,6 @@
 import { BellRing, CalendarDays, PiggyBank, Wallet } from "lucide-react";
 import Link from "next/link";
+import { DecisionsCard } from "@/components/decisions-card";
 import { HabitCard } from "@/components/habit-card";
 import { LearnCard } from "@/components/learn-card";
 import { TaskBoard } from "@/components/task-board";
@@ -8,6 +9,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { currentBalance, istToday, listGoals, monthSummary } from "@/lib/server/money";
 import { entityMap, memoriesWhere } from "@/lib/server/queries";
 import { recentNotifications } from "@/lib/server/reminders";
+import { listDecisions, todaysPractice } from "@/lib/server/decisions";
 import { habitBoard } from "@/lib/server/habits";
 import { pendingReviewCounts } from "@/lib/server/learn";
 import { latestRhythms, type RhythmEntry } from "@/lib/server/rhythm";
@@ -25,7 +27,7 @@ function shift(day: string, n: number) {
 export default async function TodayPage() {
   const today = istToday();
   const hour = Number(new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit" }));
-  const [rhythms, tasks, entities, upcoming, balance, month, goals, pings, review, habits] = await Promise.all([
+  const [rhythms, tasks, entities, upcoming, balance, month, goals, pings, review, habits, decisions] = await Promise.all([
     latestRhythms(12).catch(() => [] as RhythmEntry[]),
     listTasks({ status: "all", limit: 500 }).catch(() => []),
     entityMap().catch(() => ({})),
@@ -36,7 +38,9 @@ export default async function TodayPage() {
     recentNotifications(5).catch(() => []),
     pendingReviewCounts().catch(() => ({ proposals: 0, memories: 0 })),
     habitBoard().catch(() => null),
+    listDecisions(20).catch(() => []),
   ]);
+  const practice = todaysPractice();
   const names = Object.fromEntries(Object.entries(entities).map(([id, e]) => [id, e.name]));
   const latest: Partial<Record<RhythmEntry["kind"], RhythmEntry>> = {};
   for (const r of rhythms) latest[r.kind] ??= r;
@@ -58,6 +62,7 @@ export default async function TodayPage() {
         </div>
 
         <div className="space-y-5">
+          <DecisionsCard initial={decisions.map((d) => ({ _id: d._id, statement: d.statement, decidedAt: d.decidedAt, followUp: d.followUp, status: d.status, changeNote: d.changeNote, drifts: d.drifts }))} practice={{ title: practice.title, how: practice.how }} />
           {habits && <HabitCard initial={habits} />}
           <LearnCard initial={review} />
           <Card className="p-5">
